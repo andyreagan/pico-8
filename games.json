@@ -1,0 +1,12 @@
+[
+ {"slug": "dave-digger-bot", "title": "Dave Digger Bot", "year": 2026, "blurb": "Dig through the dirt, grab the diamonds, and throw chickens at the bots.", "controls": "arrows dig, z throws a chicken"},
+ {"slug": "bunny-quest", "title": "Bunny Quest", "year": 2026, "blurb": "Explore the world, find the hidden axe and sword, beat the evil turtles, visit the villagers and catch the bunny.", "controls": "arrows walk, x swings, z knocks / talks / sleeps / switches weapon"},
+ {"slug": "super-animals", "title": "Super Animals", "year": 2026, "blurb": "Pick a cheetah, dragon, unicorn, snail or penguin and race the evil monster boss to the ultra diamond.", "controls": "left/right picks an animal, z jumps, x uses its power"},
+ {"slug": "princess-lucille", "title": "Princess Lucille", "year": 2026, "blurb": "Find the doggies on the rainbow platforms. Zap Maldrid the evil wizard with your wand and hide in your pink tent.", "controls": "arrows move, z jumps, x waves the wand"},
+ {"slug": "rainbow-unicorn", "title": "Rainbow Unicorn", "year": 2026, "blurb": "Hop the rainbow blocks, grab the coins, and hide from the robber in your fort.", "controls": "arrows move, z jumps, x throws a star"},
+ {"slug": "apple-guy", "title": "Apple Guy vs the Duck", "year": 2026, "blurb": "Jump the platforms, catch the diamond robots, and throw poison apples at the duck.", "controls": "arrows move, z jumps, x throws an apple, down drops through"},
+ {"slug": "animal-power", "title": "Animal Power", "year": 2025, "blurb": "One of our first games, from before Claude: I wrote the code from YouTube tutorials and the kids did the art."},
+ {"slug": "cat-mario", "title": "Cat Mario", "year": 2025, "blurb": "Another early one from 2025."},
+ {"slug": "save-the-children", "title": "Save the Children", "year": 2025, "blurb": "Another early one from 2025."},
+ {"slug": "dave-digger-bot-notes", "title": "Dave Digger Bot design notes", "year": 2026, "playable": false, "blurb": "Not a game: Abel's design notes for Dave Digger Bot, typed into the PICO-8 code editor (\"he throws chickens at them / the chicken needs to be smaller\")."}
+]

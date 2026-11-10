@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Our PICO-8 games</title>
+<style>
+ body { background:#1d2b53; color:#fff1e8; font-family: ui-monospace, Menlo, monospace; margin:0; padding:24px; }
+ header { max-width:960px; margin:0 auto 24px; }
+ h1 { color:#ffec27; margin:0 0 8px; }
+ a { color:#29adff; }
+ .grid { max-width:960px; margin:0 auto; display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:20px; }
+ .card { background:#000; border:3px solid #5f574f; border-radius:6px; padding:12px; color:#fff1e8; text-decoration:none; }
+ .card:hover { border-color:#ff77a8; }
+ .card img { width:100%; image-rendering:pixelated; display:block; }
+ .card h2 { font-size:18px; color:#ffa300; margin:10px 0 6px; }
+ .card small { color:#83769c; font-size:12px; }
+ .card p { margin:4px 0; font-size:14px; line-height:1.4; }
+ .card .ctl { color:#c2c3c7; font-size:12px; }
+ .notes { border-style:dashed; }
+</style>
+</head>
+<body>
+<header>
+<h1>Our PICO-8 games</h1>
+<p>Games my kids and I made in <a href="https://www.lexaloffle.com/pico8.php">PICO-8</a>.
+The kids draw the sprites, make the sounds and come up with the game, and
+since 2026 Claude Code writes most of the code.
+Click a game to play it in the browser (keyboard: arrows, z and x).</p>
+<p>We also play them on our arcade cabinet: <a href="https://andyreagan.com/2026-11-09-pico8-on-the-arcade.html">PICO-8 on the arcade with the joysticks working</a>.
+Source: <a href="https://github.com/andyreagan/pico-8">github.com/andyreagan/pico-8</a>.</p>
+</header>
+<div class="grid">
+<a class="card" href="dave-digger-bot/">
+  <img src="dave-digger-bot/label.png" alt="Dave Digger Bot">
+  <h2>Dave Digger Bot <small>2026</small></h2>
+  <p>Dig through the dirt, grab the diamonds, and throw chickens at the bots.</p><p class="ctl">arrows dig, z throws a chicken</p>
+</a>
+<a class="card" href="bunny-quest/">
+  <img src="bunny-quest/label.png" alt="Bunny Quest">
+  <h2>Bunny Quest <small>2026</small></h2>
+  <p>Explore the world, find the hidden axe and sword, beat the evil turtles, visit the villagers and catch the bunny.</p><p class="ctl">arrows walk, x swings, z knocks / talks / sleeps / switches weapon</p>
+</a>
+<a class="card" href="super-animals/">
+  <img src="super-animals/label.png" alt="Super Animals">
+  <h2>Super Animals <small>2026</small></h2>
+  <p>Pick a cheetah, dragon, unicorn, snail or penguin and race the evil monster boss to the ultra diamond.</p><p class="ctl">left/right picks an animal, z jumps, x uses its power</p>
+</a>
+<a class="card" href="princess-lucille/">
+  <img src="princess-lucille/label.png" alt="Princess Lucille">
+  <h2>Princess Lucille <small>2026</small></h2>
+  <p>Find the doggies on the rainbow platforms. Zap Maldrid the evil wizard with your wand and hide in your pink tent.</p><p class="ctl">arrows move, z jumps, x waves the wand</p>
+</a>
+<a class="card" href="rainbow-unicorn/">
+  <img src="rainbow-unicorn/label.png" alt="Rainbow Unicorn">
+  <h2>Rainbow Unicorn <small>2026</small></h2>
+  <p>Hop the rainbow blocks, grab the coins, and hide from the robber in your fort.</p><p class="ctl">arrows move, z jumps, x throws a star</p>
+</a>
+<a class="card" href="apple-guy/">
+  <img src="apple-guy/label.png" alt="Apple Guy vs the Duck">
+  <h2>Apple Guy vs the Duck <small>2026</small></h2>
+  <p>Jump the platforms, catch the diamond robots, and throw poison apples at the duck.</p><p class="ctl">arrows move, z jumps, x throws an apple, down drops through</p>
+</a>
+<a class="card" href="animal-power/">
+  <img src="animal-power/label.png" alt="Animal Power">
+  <h2>Animal Power <small>2025</small></h2>
+  <p>One of our first games, from before Claude: I wrote the code from YouTube tutorials and the kids did the art.</p>
+</a>
+<a class="card" href="cat-mario/">
+  <img src="cat-mario/label.png" alt="Cat Mario">
+  <h2>Cat Mario <small>2025</small></h2>
+  <p>Another early one from 2025.</p>
+</a>
+<a class="card" href="save-the-children/">
+  <img src="save-the-children/label.png" alt="Save the Children">
+  <h2>Save the Children <small>2025</small></h2>
+  <p>Another early one from 2025.</p>
+</a>
+<a class="card notes" href="https://github.com/andyreagan/pico-8/blob/main/carts/dave-digger-bot-notes.p8">
+  <h2>Dave Digger Bot design notes <small>2026</small></h2>
+  <p>Not a game: Abel&#x27;s design notes for Dave Digger Bot, typed into the PICO-8 code editor (&quot;he throws chickens at them / the chicken needs to be smaller&quot;).</p>
+</a>
+</div>
+</body>
+</html>

@@ -1,0 +1,811 @@
+pico-8 cartridge // http://www.pico-8.com
+version 42
+__lua__
+-- bunny quest
+-- explore the world, find the
+-- hidden axe and sword, beat the
+-- evil turtles, catch the bunny!
+
+houses={{x=48,y=32,v=1,bed={16,24},npc={96,48}},{x=160,y=40,v=2,bed={104,24},npc={16,48}},{x=96,y=160,v=3,bed={16,24},npc={96,48}},{x=304,y=160,v=4,bed={104,24},npc={16,48}}}
+axe_at={328,24} sword_at={24,224} bunny_at={448,56} start_at={48,64}
+turtle_at={{144,80},{224,152},{288,96},{352,216},{416,88},{448,160},{464,224}}
+
+names={"grandma","fisher fran","farmer joe","hunter kim"}
+
+function _init()
+ pl={x=start_at[1],y=start_at[2],face=1,dir=3,inv=0,swing=0}
+ hearts=3
+ has_axe=false has_sword=false
+ weapon=nil
+ axe={x=axe_at[1],y=axe_at[2]}
+ sword={x=sword_at[1],y=sword_at[2]}
+ bun={x=bunny_at[1],y=bunny_at[2],run=0,tired=0,caught=false,t=0}
+ turtles={}
+ for p in all(turtle_at) do
+  add(turtles,{x=p[1],y=p[2],shell=true,crack=0,t=rnd(60),dx=0,dy=0,hit=0})
+ end
+ inside=nil
+ parts={}
+ msg="" msgt=0
+ say(nil,{"find the hidden axe and\nsword, beat the evil\nturtles, catch the bunny!",
+  "knock on doors with z to\nask for help. walk up into\na door to go inside."})
+end
+
+-->8
+-- world helpers
+
+-- is this pixel blocked? uses the
+-- sprite flags for trees, water
+-- and houses, and the real pixels
+-- of the bushes and stumps.
+function solid_at(x,y)
+ local ox=0
+ if inside then
+  ox=64+(inside.v-1)*16
+  if x<0 or y<0 or x>=128 or y>=128 then return true end
+ elseif x<0 or y<0 or x>=512 or y>=256 then
+  return true
+ end
+ local n=mget(ox+flr(x/8),flr(y/8))
+ if fget(n,0) then return true end
+ if n>=64 and n<192 and n%16<8 then
+  return sget(n%16*8+x%8,flr(n/16)*8+y%8)!=11
+ end
+ return false
+end
+
+-- check the feet of a sprite at x,y
+function can_go(x,y)
+ return not (solid_at(x+1,y+5) or solid_at(x+6,y+5)
+  or solid_at(x+1,y+7) or solid_at(x+6,y+7))
+end
+
+-- move with collision, returns
+-- true if it moved the full way
+function walk(e,dx,dy)
+ local ok=true
+ if dx!=0 then
+  if can_go(e.x+dx,e.y) then e.x+=dx else ok=false end
+ end
+ if dy!=0 then
+  if can_go(e.x,e.y+dy) then e.y+=dy else ok=false end
+ end
+ return ok
+end
+
+function near(a,b,d)
+ return abs(a.x-b.x)<d and abs(a.y-b.y)<d
+end
+
+function dist(a,b)
+ local dx,dy=(a.x-b.x)/8,(a.y-b.y)/8
+ return sqrt(dx*dx+dy*dy)*8
+end
+
+function poof(x,y,cols)
+ for i=1,12 do
+  local a=rnd()
+  add(parts,{x=x,y=y,vx=cos(a),vy=sin(a),c=rnd(cols),t=12+rnd(10)})
+ end
+end
+
+function note(s)
+ msg=s msgt=60
+end
+
+-- dialog box: who is a villager
+-- number (or nil), pages of text
+function say(who,pages)
+ dlg={who=who,pages=pages,i=1}
+ sfx(6)
+end
+
+-->8
+-- what the villagers say
+
+function hint(v)
+ local left=#turtles
+ if v==1 then
+  if not (has_axe and has_sword) then
+   return {"hello dear! the bunny\nlives in the east meadow,\npast the row of trees.",
+    "watch out for the evil\nturtles! crack a shell\nwith an axe, then use a\nsword.",
+    "ask fisher fran about the\naxe, and farmer joe about\nthe sword."}
+  elseif left>0 then
+   return {"you found both! use the\naxe (x) to crack a shell,\nthen z to switch, and the",
+    "sword (x) to finish it.\nhurry, the shell grows\nback! "..left.." turtles left."}
+  end
+  return {"all the turtles are gone!\nnow go catch that bunny!"}
+ elseif v==2 then
+  if not has_axe then
+   return {"my axe? i hid it in the\nnorth, past the pond to\nthe east. look close,",
+    "it's hidden! you'll see a\nlittle twinkle near it."}
+  end
+  return {"you found my axe! the\nturtles' shells crack\nright open with it."}
+ elseif v==3 then
+  if not has_sword then
+   return {"an old sword is hidden\nin the far southwest\ncorner, by the trees.",
+    "follow the road west,\nthen head down to the\nbottom."}
+  end
+  return {"that's the sword! a\nturtle needs its shell\ncracked before the sword\nworks."}
+ else
+  if bun.caught then
+   return {"you caught the bunny!\nwhat a good friend."}
+  end
+  return {"the bunny is fast, but it\ngets tired. chase it into\nthe trees to catch it!",
+   "it lives in the east\nmeadow. go through the\ngap in the trees."}
+ end
+end
+
+-->8
+-- update
+
+function _update()
+ for i=#parts,1,-1 do
+  local p=parts[i]
+  p.x+=p.vx p.y+=p.vy p.t-=1
+  if p.t<=0 then deli(parts,i) end
+ end
+ if msgt>0 then msgt-=1 end
+ if dlg then
+  if btnp(4) or btnp(5) then
+   dlg.i+=1
+   sfx(6)
+   if dlg.i>#dlg.pages then
+    dlg=nil
+    if after then after() after=nil end
+   end
+  end
+  return
+ end
+ update_player()
+ if not inside then
+  for t in all(turtles) do update_turtle(t) end
+  check_items()
+ end
+ update_bunny()
+end
+
+function update_player()
+ local p=pl
+ if p.inv>0 then p.inv-=1 end
+ if p.swing>0 then p.swing-=1 end
+ local dx,dy=0,0
+ if btn(0) then dx=-1 p.face=-1 p.dir=0 end
+ if btn(1) then dx=1 p.face=1 p.dir=1 end
+ if btn(2) then dy=-1 p.dir=2 end
+ if btn(3) then dy=1 p.dir=3 end
+ p.moving=dx!=0 or dy!=0
+ -- go inside: walk up into a door
+ if not inside and dy<0 then
+  for h in all(houses) do
+   if abs(p.x-(h.x+4))<4 and p.y<=h.y+16 and p.y>=h.y+9 then
+    enter(h)
+    return
+   end
+  end
+ end
+ walk(p,dx*1.2,dy*1.2)
+ -- leave: step onto the door mat
+ if inside and p.y>=110 and abs(p.x-60)<10 then
+  leave()
+  return
+ end
+ if btnp(5) then attack() end
+ if btnp(4) then interact() end
+end
+
+function enter(h)
+ inside=h
+ pl.x=60 pl.y=104 pl.dir=2
+ sfx(7)
+ if bun.caught then bun.x=pl.x-8 bun.y=pl.y end
+ note("you go inside")
+end
+
+function leave()
+ local h=inside
+ inside=nil
+ pl.x=h.x+4 pl.y=h.y+20 pl.dir=3
+ if bun.caught then bun.x=pl.x-8 bun.y=pl.y end
+ sfx(7)
+end
+
+function interact()
+ local p=pl
+ if inside then
+  local h=inside
+  local npc={x=h.npc[1],y=h.npc[2]}
+  local bed={x=h.bed[1],y=h.bed[2]+4}
+  if near(p,npc,14) then
+   say(h.v,hint(h.v))
+   return
+  elseif near(p,bed,14) then
+   say(h.v,{"you snuggle into bed and\nstay the night with them.","you wake up feeling\ngreat! hearts full."})
+   hearts=3
+   sfx(8)
+   return
+  end
+ else
+  -- knock on a door
+  for h in all(houses) do
+   if abs(p.x-(h.x+4))<8 and p.y>=h.y+9 and p.y<=h.y+24 then
+    say(h.v,hint(h.v))
+    return
+   end
+  end
+ end
+ -- nothing nearby: switch weapon
+ if has_axe and has_sword then
+  weapon=weapon=="axe" and "sword" or "axe"
+  note("now using the "..weapon)
+  sfx(5)
+ end
+end
+
+function attack()
+ if not weapon or pl.swing>0 then return end
+ pl.swing=10
+ sfx(0)
+ local hx,hy=pl.x,pl.y
+ if pl.dir==0 then hx-=8 elseif pl.dir==1 then hx+=8
+ elseif pl.dir==2 then hy-=8 else hy+=8 end
+ local box={x=hx,y=hy}
+ for i=#turtles,1,-1 do
+  local t=turtles[i]
+  if near(box,t,9) then
+   if weapon=="axe" then
+    if t.shell then
+     t.shell=false t.crack=240
+     poof(t.x+4,t.y+4,{3,1,9})
+     note("crack! now the sword!")
+     sfx(1)
+    else
+     note("switch to the sword (z)!")
+    end
+   else
+    if t.shell then
+     note("clang! crack it with the axe")
+     sfx(2)
+    else
+     poof(t.x+4,t.y+4,{9,3,7,10})
+     deli(turtles,i)
+     sfx(3)
+     if #turtles==0 then
+      note("all the evil turtles are gone!")
+     else
+      note(#turtles.." evil turtles left")
+     end
+    end
+   end
+   -- knock the turtle back
+   walk(t,(t.x-pl.x)/2,(t.y-pl.y)/2)
+  end
+ end
+end
+
+function check_items()
+ if not has_axe and near(pl,axe,7) then
+  has_axe=true weapon="axe"
+  sfx(5)
+  say(nil,{"you found the axe!\npress x to swing it.\nit cracks turtle shells."})
+ end
+ if not has_sword and near(pl,sword,7) then
+  has_sword=true
+  if not weapon then weapon="sword" end
+  sfx(5)
+  say(nil,{"you found the sword!\npress x to swing it.\nz switches weapons."})
+ end
+end
+
+function update_turtle(t)
+ if t.crack>0 then
+  t.crack-=1
+  if t.crack==0 then t.shell=true end
+ end
+ t.t-=1
+ local d=dist(t,pl)
+ local spd=t.shell and 0.45 or 0.3
+ if d<48 then
+  -- chase!
+  t.dx=sgn(pl.x-t.x)*(abs(pl.x-t.x)>2 and 1 or 0)
+  t.dy=sgn(pl.y-t.y)*(abs(pl.y-t.y)>2 and 1 or 0)
+ elseif t.t<=0 then
+  t.t=40+rnd(60)
+  local r=flr(rnd(5))
+  t.dx=({-1,1,0,0,0})[r+1]
+  t.dy=({0,0,-1,1,0})[r+1]
+ end
+ walk(t,t.dx*spd,t.dy*spd)
+ if pl.inv<=0 and near(t,pl,6) then hurt(t) end
+end
+
+function hurt(t)
+ hearts-=1
+ pl.inv=60
+ sfx(4)
+ for i=1,8 do walk(pl,sgn(pl.x-t.x),sgn(pl.y-t.y)) end
+ if hearts<=0 then
+  -- wake up safe at grandma's
+  hearts=3
+  inside=houses[1]
+  pl.x=inside.bed[1]+10 pl.y=inside.bed[2]+4
+  say(1,{"oh my! the turtles got\nyou. you're safe at my\nhouse now. rest up, dear."})
+ else
+  note("ouch! a turtle bit you")
+ end
+end
+
+function update_bunny()
+ local b=bun
+ b.t+=1
+ if b.caught then
+  -- your bunny follows you around
+  b.inside=inside
+  if dist(b,pl)>12 then
+   b.x+=(pl.x-b.x)*0.08
+   b.y+=(pl.y-b.y)*0.08
+  end
+  return
+ end
+ if inside then return end
+ local d=dist(b,pl)
+ if b.tired>0 then
+  b.tired-=1
+ elseif d<40 then
+  -- run away!
+  b.run+=1
+  local dx,dy=(b.x-pl.x)/max(d,1),(b.y-pl.y)/max(d,1)
+  if not walk(b,dx*1.4,dy*1.4) then
+   -- blocked: try sliding sideways
+   if not walk(b,-dy*1.4,dx*1.4) then walk(b,dy*1.4,-dx*1.4) end
+  end
+  if b.run>75 then b.run=0 b.tired=50 end
+ elseif b.t%30==0 then
+  -- hop around
+  b.hx=rnd(2)-1 b.hy=rnd(2)-1
+ elseif b.hx and b.t%30<8 then
+  walk(b,b.hx,b.hy)
+ end
+ if near(b,pl,6) then
+  b.caught=true
+  sfx(9)
+  poof(b.x+4,b.y+4,{14,7,10})
+  say(nil,{"you caught the bunny!","the bunny is your friend\nnow and follows you\neverywhere. the end!",
+   "(keep exploring as long\nas you like.)"})
+ end
+end
+
+-->8
+-- draw
+
+function _draw()
+ cls(3)
+ local cx,cy=0,0
+ if inside then
+  map(64+(inside.v-1)*16,0,0,0,16,16)
+  spr(31+inside.v,inside.npc[1],inside.npc[2]+sin(t()*0.5)*0.6)
+ else
+  cx=mid(0,pl.x-60,512-128)
+  cy=mid(0,pl.y-60,256-128)
+  camera(cx,cy)
+  map(0,0,0,0,64,32)
+  draw_hidden(axe,has_axe,7)
+  draw_hidden(sword,has_sword,9)
+  for t in all(turtles) do
+   if not t.shell then
+    -- no shell: show it bare
+    pal(3,15) pal(1,15)
+    if t.crack<60 and t.crack%8<4 then pal() end
+   end
+   spr(3,t.x,t.y,1,1,t.dx>0)
+   pal()
+  end
+ end
+ if not bun.caught and not inside or bun.caught then
+  local hop=(bun.t%30<8 or bun.run>0) and 1 or 0
+  if bun.tired>0 then hop=0 end
+  spr(5,bun.x,bun.y-hop)
+  if bun.tired>0 and bun.t%20<10 then print("z",bun.x+7,bun.y-6,7) end
+ end
+ draw_player()
+ for p in all(parts) do pset(p.x,p.y,p.c) end
+ camera()
+ draw_hud()
+ if msgt>0 then
+  rectfill(0,120,127,127,0)
+  print(msg,64-#msg*2,121,7)
+ end
+ if dlg then draw_dlg() end
+end
+
+-- hidden things only show up when
+-- you get close, with a twinkle
+-- now and then as a clue
+function draw_hidden(it,got,n)
+ if got then return end
+ if dist(it,pl)<20 then
+  spr(n,it.x,it.y)
+ elseif flr(t()*30)%90<4 then
+  pset(it.x+4,it.y+4,7)
+ end
+end
+
+function draw_player()
+ local p=pl
+ if p.inv>0 and p.inv%4<2 then return end
+ local bob=(p.moving and flr(t()*8)%2==0) and 1 or 0
+ spr(1,p.x,p.y-bob,1,1,p.face<0)
+ if p.swing>0 and weapon then
+  local n=weapon=="axe" and 7 or 9
+  local wx,wy=p.x,p.y
+  local s=(10-p.swing)/10
+  if p.dir==0 then wx-=7 wy-=2-s*4
+  elseif p.dir==1 then wx+=7 wy-=2-s*4
+  elseif p.dir==2 then wy-=7 wx+=s*4-2
+  else wy+=6 wx+=s*4-2 end
+  spr(n,wx,wy,1,1,p.dir==0,p.dir==3)
+ end
+end
+
+function draw_hud()
+ rectfill(0,0,127,8,0)
+ for i=1,3 do
+  print("\135",i*7-5,2,i<=hearts and 8 or 5)
+ end
+ -- weapons, current one boxed
+ if has_axe then
+  if weapon=="axe" then rect(28,0,37,8,7) end
+  spr(7,29,1)
+ end
+ if has_sword then
+  if weapon=="sword" then rect(39,0,48,8,7) end
+  spr(9,40,1)
+ end
+ spr(3,58,1)
+ print(#turtles,68,2,7)
+ spr(5,80,1)
+ print(bun.caught and "yay!" or "?",90,2,bun.caught and 10 or 7)
+ if inside then print(names[inside.v],127-#names[inside.v]*4,2,6) end
+end
+
+function draw_dlg()
+ rectfill(1,84,126,126,1)
+ rect(1,84,126,126,7)
+ local x=6
+ if dlg.who then
+  rectfill(4,88,21,105,13)
+  sspr((31+dlg.who)%16*8,flr((31+dlg.who)/16)*8,8,8,5,89,16,16)
+  print(names[dlg.who],4,108,6)
+  x=26
+ end
+ print(dlg.pages[dlg.i],x,89,7)
+ if t()%1<0.6 then print("\142",116,119,6) end
+end
+__gfx__
+00000000000000000000000000000000000000000004040000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000008480000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00700700000c1c000000000005900000000000000099999000000000000050000000000000000000000000000000000000000000000000000000000000000000
+0007700000c111c00000000009931310000000000009990000000000000050000000000000054000000000000000000000000000000000000000000000000000
+000770000001c100000000000091313000000000000eee0000000000000050000000000000004000000000000000000000000000000000000000000000000000
+007007000001110000000000009999900000000000eeeee000000000000050000000000000004000000000000000000000000000000000000000000000000000
+00000000000c0c000000000000909090000000000000000000000000000666000000000000004000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000000000
+bb3333bbccccccccffffffffbbbbbbbbbbbbbb8888bbbbbb44444444dddddddd44444444444444448888888899999999dddddddd44b3b4440000000000000000
+b333b33bc77cccccff9fffffbebbbbbbbbbbb888888bbbbb49444494dedddedd477777744ffffff48aaaaaa89a9a9a9ad666666d4b3b3b440000000000000000
+33333b33ccccccccfffffff9eaebbbabbbbb88888888bbbb44444444dddddddd477777744f7ff7f48a8888a8a9a9a9a9d6cc7c6d443b34440000000000000000
+3b333333ccccc77cffffffffbebbbaeabbb8888888888bbb22222222dddedddd488888844ffffff48a8ee8a89a9a9a9ad6c7cc6d44b3b4440000000000000000
+33333b33ccccccccf9ffffffbbbbbbabbb888888888888bb44444944dddddddd48e88e844f7ff7f48a8ee8a8a9a9a9a9d666666d449999440000000000000000
+b333333bcc77ccccfffff9ffbbebbbbbb88888888888888b44444444dedddedd488888844ffffff48a8888a89a9a9a9ad6cccc6d449999440000000000000000
+bb3443bbccccccccffffffffbeaebbbb888888888888888894444444dddddddd48e88e84454444548aaaaaa8a9a9a9a9d666666d444994440000000000000000
+bbb44bbbcccccc7cfff9ffffbbebbbbb222222222222222222222222222222224888888445444454888888889999999922222222444444440000000000000000
+0066660000aaaa000099990000444400b77777777777777b00000000000000004888888400000000000000000000000000000000000000000000000000000000
+06666660aaaaaaaa9999999904444440b7cc77777777cc7b000000000000000048e88e8400000000000000000000000000000000000000000000000000000000
+06ffff600ffffff00ffffff004ffff40b7cc77777777cc7b00000000000000004888888400000000000000000000000000000000000000000000000000000000
+0f1ff1f00f1ff1f00f1ff1f00f1ff1f0b77777744777777b000000000000000048e88e8400000000000000000000000000000000000000000000000000000000
+00ffff0000ffff0000f44f0000ffff00b77777744777777b00000000000000004888888400000000000000000000000000000000000000000000000000000000
+0dddddd00cccccc00888888003333330b777777a4777777b00000000000000004444444400000000000000000000000000000000000000000000000000000000
+ddddddddfccccccff888888ff333333fb77777744777777b00000000000000004222222400000000000000000000000000000000000000000000000000000000
+0dd00dd0011001100440044005500550b55555544555555b00000000000000004444444400000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3bbb3bbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb333bb33bbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3bbb3bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb333bb33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb333333bbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3bbb3bbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaa9aa9aabbbbbbbbbbbbbbbbbaaa9a9aaabbbbbbbbbbbbbbbbbbbbbbbbb333bb33bbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb4aa99aa4bbbbbbbbbbbbbbbbb4aaaaaa44bbbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb44a99a44bbbbbbbbbbbbbbbbb44a99a444bbbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb44444444bbbbbbbbbbbbbbbbb444994444bbbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb4444444444bbbbbbbbbbbbbbb44444444444bbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb333333bbbbbbbbbbbbb
+bbbbbbbbbaa9aa9aabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb333bbbbbbbbbbbbbbb
+bbbbbbbbb4aa99aa4bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33bbbbbbbbbbbbbbbb
+bbbbbbbbb44a99a44bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33bbbbbbbbbbbbbbbb
+bbbbbbbbb44444444bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbb4444444444bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbaa9aa9aabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbb4aa99aa4bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbb44a99a44bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbb44444444bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbb4444444444bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaa9aa9aabbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb4aa99aa4bbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb44a99a44bbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb44444444bbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb4444444444bbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000
+__gff__
+0000000000000000000000000000000001010000010100010101000001010000000000000101000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+__label__
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000404000000000000000000000000000000000000000000
+00088088008808800880880000000000000000000000000000000000000000000000777000000000000848000077700000000000000000000000000000000000
+00088888008888800888880000000000000000000000000000000000000590000000007000000000009999900000700000000000000000000000000000000000
+00088888008888800888880000000000000000000000000000000000000993131000007000000000000999000007700000000000000000000000000000000000
+00008880000888000088800000000000000000000000000000000000000091313000007000000000000eee000000000000000000000000000000000000000000
+0000080000008000000800000000000000000000000000000000000000009999900000700000000000eeeee00007000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000090909000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+b333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbbbbbbbbb
+bb3443bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb333333bbbbbbbbbbbbbbbbbbbb
+bbb44bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb333bbbbbbbbbbbbbbbbbbbbbb
+bb3333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33bbbbbbbbbbbbbbbbbbbbbbb
+b333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33bbbbbbbbbbbbbbbbbbbbbbb
+33333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+3b333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+33333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaa9aa9aabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaa9aa9aabbbbbb
+b333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb4aa99aa4bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb4aa99aa4bbbbbb
+bb3443bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb44a99a44bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb44a99a44bbbbbb
+bbb44bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb44444444bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb44444444bbbbbb
+bb3333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb4444444444bbbbb
+b333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+33333b33baa9aa9aabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaa9aa9aabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+3b333333b4aa99aa4bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb4aa99aa4bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+33333b33b44a99a44bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb44a99a44bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+b333333bb44444444bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb44444444bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bb3443bb4444444444bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb4444444444bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbb44bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bb3333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb8888bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+b333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb888888bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+33333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb88888888bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+3b333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb8888888888bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+33333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb888888888888bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+b333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb88888888888888bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bb3443bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb8888888888888888bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbb44bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2222222222222222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bb3333bbbbbbbbbbbbbbbbbbbaa9aa9aabbbbbbbbbbbbbbbb77777777777777bbbbbbbbbbbbbbbbbbbbbbbbbbaa9aa9aabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+b333b33bbbbbbbbbbbbbbbbbb4aa99aa4bbbbbbbbbbbbbbbb7cc77777777cc7bbbbbbbbbbbbbbbbbbbbbbbbbb4aa99aa4bbbbbbbbebbbbbbbbbbbbbbbbbbbbbb
+33333b33bbbbbbbbbbbbbbbbb44a99a44bbbbbbbbbbbbbbbb7cc77777777cc7bbbbbbbbbbbbbbbbbbbbbbbbbb44a99a44bbbbbbbeaebbbabbbbbbbbbbbbbbbbb
+3b333333bbbbbbbbbbbbbbbbb44444444bbbbbbbbbbbbbbbb77777744777777bbbbbbbbbbbbbbbbbbbbbbbbbb44444444bbbbbbbbebbbaeabbbbbbbbbbbbbbbb
+33333b33bbbbbbbbbbbbbbbb4444444444bbbbbbbbbbbbbbb77777744777777bbbbbbbbbbbbbbbbbbbbbbbbb4444444444bbbbbbbbbbbbabbbbbbbbbbbbbbbbb
+b333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb777777a4777777bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbebbbbbbbbbbbbbbbbbbbbb
+bb3443bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb77777744777777bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbeaebbbbbbbbbbbbbbbbbbbb
+bbb44bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb55555544555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbebbbbbbbbbbbbbbbbbbbbb
+bb3333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbffffffffffffffffbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+b333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbff9fffffff9fffffbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+33333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbfffffff9fffffff9bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+3b333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbffffffffffffffffbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+33333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbf9fffffff9ffffffbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+b333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbfffff9fffffff9ffbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bb3443bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbffffffffffffffffbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbb44bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbfff9fffffff9ffffbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaa9aa9aabbbbbb
+bb3333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb4aa99aa4bbbbbb
+b333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb44a99a44bbbbbb
+33333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb44444444bbbbbb
+3b333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb4444444444bbbbb
+33333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+b333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bb3443bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbb44bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bb3333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+b333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+33333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbc1cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+3b333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbc111cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+33333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1c1bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+b333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb111bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bb3443bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcbcbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbb44bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bb3333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3bbb3bbbbbbbbbbbbbbbbbbbb
+b333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb333bb33bbbbbbbbbbbbbbbbbbb
+33333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbb333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbbbbbbbbb
+3b333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbb333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbbbbbbbbb
+33333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbb333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbbbbbbbbb
+b333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33333333bbbbbbbbbbbbbbbbbbb
+bb3443bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb333333bbbbbbbbbbbbbbbbbbbb
+bbb44bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb333bbbbbbbbbbbbbbbbbbbbbb
+bb3333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33bbbbbbbffffffffffffffffbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33bbbbbbbbbbbbbbbbbbbbbbb
+b333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33bbbbbbbff9fffffff9fffffbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb33bbbbbbbbbbbbbbbbbbbbbbb
+33333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbfffffff9fffffff9bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+3b333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbffffffffffffffffbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+33333b33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbf9fffffff9ffffffbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaa9aa9aabbbbbb
+b333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbfffff9fffffff9ffbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb4aa99aa4bbbbbb
+bb3443bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbffffffffffffffffbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb44a99a44bbbbbb
+bbb44bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbfff9fffffff9ffffbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb44444444bbbbbb
+b777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777b
+b711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117b
+3711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117b
+3711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117b
+3711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117b
+b711117771777177117711111177717171777111117171777177117711777177111111777171717771111177717711771111111111111111111111111111117b
+b711117111171171717171111117117171711111117171171171717171711171711111717171717111111171717171717111111111111111111111111111117b
+b711117711171171717171111117117771771111117771171171717171771171711111777117117711111177717171717111111111111111111111111111117b
+b711117111171171717171111117117171711111117171171171717171711171711111717171717111111171717171717111111111111111111111111111117b
+b711117111777171717771111117117171777111117171777177717771777171711111717171717771111171717171777111111111111111111111111111117b
+3711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117b
+3711111771717117717771771111111111777177717771777111117771717177711111777171717771711111111111111111111111111111111111111111117b
+3711117111717171717171717111111111717171117171171111111711717171111111711171711711711111111111111111111111111111111111111111117b
+b711117771717171717711717111111111771177117771171111111711777177111111771171711711711111111111111111111111111111111111111111117b
+b711111171777171717171717117111111717171117171171111111711717171111111711177711711711111111111111111111111111111111111111111117b
+b711117711777177117171777171111111777177717171171111111711717177711111777117117771777111111111111111111111111111111111111111117b
+b711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117b
+b711117771717177717771711177711771111111111771777177711771717111117771717177711111777171717711771171711711111111111111111111117b
+3711111711717171711711711171117111111111117111717117117111717111111711717171111111717171717171717171711711111111111111111111117b
+3711111711717177111711711177117771111111117111777117117111777111111711777177111111771171717171717177711711111111111111111111117b
+3711111711717171711711711171111171171111117111717117117111717111111711717171111111717171717171717111711111111111111111111111117b
+b711111711177171711711777177717711711111111771717117111771717111111711717177711111777117717171717177711711111111111111111111117b
+b711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117b
+b711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117b
+b711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117f
+b711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117f
+37111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111179
+3711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117f
+3711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117f
+b711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117f
+b711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117f
+b711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117f
+b711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117f
+b711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117f
+37111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111179
+3711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111116666611117f
+3711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111166111661117f
+b711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111166161661117f
+b711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111166111661117f
+b711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111116666611117f
+b711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117b
+b711111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111117b
+3777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777b
+3b333333bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+__map__
+101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101717171c17171717171717171c1717171717171c17171717171717171c1717171717171c17171717171717171c1717171717171c17171717171717171c171717
+105152535455565750515253545556575051525354555657505152535455565750515253545556575051525354551057505152535455565750515253545556101717171c17171717171717171c1717171717171c17171717171717171c1717171717171c17171717171717171c1717171717171c17171717171717171c171717
+1061626364656667606162636465666760616263646566676061626364656667606162636465666740404063646510676061626364656667606162636465661017161616161616161616161616161d17171d161616161616161616161616161717161616161616161616161616161d17171d1616161616161616161616161617
+1071727374404040407172737475767770717273747576777071727313757611111172737475767740404073747510777071727374757677707172737475761017161816161616161616161616161617171616161616161616161616161816171716181616161616161616161616161717161616161616161616161616181617
+1081828384401415408182838485868780138240404040878081828311111111111111111185868740404083848510878081828384858613808182838485861017162816161616161616161616161617171616161616161616161616162816171716281616161616161616161616161717161616161616161616161616281617
+1091929394402425409192939413969790919240141540979091921111111111111111111111139790919293949510979091929394959697909192939495961017161616161616161616191916161617171616191916161616161616161616171716161616161616161619191616161717161619191616161616161616161617
+10a1a2a3a440121240a1a2a3a4a5a6a7a0a1a240242540a7a0a1a21111111111111111111111a6a7a0a1a2a3a4a5a6a7a0a1a2a3a4a5a6404040a2a3a4a5a61017161616161616161616161616161617171616161616161616161616161616171716161616161616161616161616161717161616161616161616161616161617
+10b1b2b3b440404040b1b2b3b4b5b6b7b0b1b240121240b713b1b21111111111111111111111b6b7b0b1b2b3b4b510b7b0b1b2b3b4b5b6404040b2b3b4b5b61017161616161616161616161616161617171616161616161616161616161616171716161616161616161616161616161717161616161616161616161616161617
+104142434440404040414243444546474041424012124047404142431111111111111111114546474041104344451047404142434445464040404243444546101716161616161a1a1a1a1616161616171716161616161a1a1a1a1616161616171716161616161a1a1a1a1616161616171716161616161a1a1a1a161616161617
+105152535440404050515253545556575040404012125657505152535455561111115253545556575051525354551057501052535455565750515253545556101716161616161a1a1a1a1616161616171716161616161a1a1a1a1616161616171716161616161a1a1a1a1616161616171716161616161a1a1a1a161616161617
+106162636465121260616263646566676040404012126667606162636465666760616263646566676061626364651067606162404040666760616263646566101716161616161a1a1a1a1616161616171716161616161a1a1a1a1616161616171716161616161a1a1a1a1616161616171716161616161a1a1a1a161616161617
+107172737475121270717273747576777040404012127677707172737475767770717240404076777071727374751077707172404040767770717273747576101716161616161a1a1a1a1616161616171716161616161a1a1a1a1616161616171716161616161a1a1a1a1616161616171716161616161a1a1a1a161616161617
+1081828384851212808182838485868780818283121286878081828384858687801382404040868780818283848510878081824040408687808182838485861017161616161616161616161616161617171616161616161616161616161616171716161616161616161616161616161717161616161616161616161616161617
+10919293949512129091929394959697909192931212969790919293949596979091924040409697909192939495109790919293949596979091929394959610171d161616161616161616161616161717161616161616161616161616161d17171d161616161616161616161616161717161616161616161616161616161d17
+1012121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121017161616161616161616161616161617171616161616161616161616161616171716161616161616161616161616161717161616161616161616161616161617
+10121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121210171717171717171b1b17171717171717171717171717171b1b17171717171717171717171717171b1b17171717171717171717171717171b1b17171717171717
+1041424344454647404142434445464740414243444546474041424344454647404142434445464740414243444510474041424344454647404142434445461000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1051525354555657505152535455561350515253545556575051525354555657505152535455565713515253545510575051525354555657505152535455561000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1061626364656667606162636465666760616263646566676061624040406667606162636465666760616263646510676061626364656667606162636465661000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1071727313757677707172404040407770717273747576777071724040407677707172737440404040717273747510777071727374757640404072737475761000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1081828384131010801082401415408780818283848586878081824040408687808182838440141540818213848510878081828384858640404082838485861000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1091929394959697909192402425409790919293949596979091929394959697909192939440242540919293949510979091929394959640404092939495961000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+10a1a2a3a4a5a6a7a0a1a240121240a7a0a1a2a3a4a5a6a7a0a1a210a4a5a6a7a0a1a2a3a440121240a113a3a4a510a7a0a1a2a3a4a5a6a7a0a1a2a3a4a5a61000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+10b1b2b3b4b5b6b7b0b1b240121240b7b0b1b2b3b4b5b6b713b1b2b3b4b5b6b7b0b1b2b3b440121240b1b2b3b4b510b7b0b1b2b3b4b5b6b7b0b1b2b3b4b5b61000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1041424344454647404142434445464740414210104546474041424344454647134142434445464740414243444510474041424344454647404142434445461000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1051525354555657505152535455565750515253545556575051525354555657505152535455565750515253545556575051525354555657505152535455561000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1061626364656667606162636465666760616263646566676061626364656667606162636465666760616240404066676061626364656667606162636465661000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1071404040757677707172737475767770717273747576777071727374757677707172737475767770717240404010777071727374757677704040407475761000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1081404040858687808182838485868780818283848586878081828384858687808182838485868780818240404010878081828310858687804040408485861000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1091404040959697909192939495969790919293949596979091929394959697909192939495969790919293949510979091929394959697904040409495961000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+10a1a2a3a4a5a6a7a0a1a2a3a4a5a6a7a0a1a2a3a4a5a6a7a0a1a2a3a4a5a6a7a0a1a2a3a4a5a6a7a0a1a2a3a4a510a7a0a1a2a3a4a5a6a7a0a1a2a3a4a5a61000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+__sfx__
+00020000306402c630286200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000300001864014630246401062000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000200003c5403c5303c5203c51000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000300001f2401a24016230122200f210000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000600001825014250102400c24000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0004000024550285502b5503055000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000100003012000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00040000184501c450184400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000a0000185501c5501f550245501f540245300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0005000024550285502b550305502b550305503455037540000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000

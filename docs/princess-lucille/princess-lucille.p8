@@ -1,0 +1,624 @@
+pico-8 cartridge // http://www.pico-8.com
+version 42
+__lua__
+-- princess lucille
+-- find the doggies on the rainbow
+-- platforms! zap maldrid the evil
+-- wizard with your magic wand, and
+-- hide in your pink tent.
+-- maldrid is safe at his red orb.
+
+function _init()
+ grav=0.25
+ layouts={
+  {{0,120,128},{30,98,36},{82,98,40},{36,76,56},
+   {0,54,36},{92,54,36},{40,32,48}},
+  {{0,120,128},{34,100,26},{70,98,26},{104,100,24},
+   {20,78,36},{72,78,36},{0,56,28},{50,56,28},
+   {100,56,28},{30,34,68}},
+  {{0,120,50},{78,120,50},{30,98,24},{74,98,24},
+   {0,78,40},{88,78,40},{44,60,40},{8,40,32},
+   {88,40,32},{44,22,40}},
+ }
+ tent={x=1,y=103,w=24,h=17}
+ clouds={}
+ for i=1,4 do add(clouds,{x=rnd(128),y=12+rnd(80),s=0.1+rnd(0.2)}) end
+ parts={}
+ state="title"
+end
+
+function new_game()
+ score=0
+ lives=3
+ level=1
+ start_level()
+end
+
+function start_level()
+ plats={}
+ for l in all(layouts[(level-1)%#layouts+1]) do
+  add(plats,{x=l[1],y=l[2],w=l[3]})
+ end
+ -- maldrid's red orb goes on the
+ -- platform farthest from the tent
+ local best,bs=nil,-1
+ for p in all(plats) do
+  local s=p.x+p.w/2+(120-p.y)
+  if s>bs then bs=s best=p end
+ end
+ orb={x=best.x+best.w-12,y=best.y-9,w=8,h=9,plat=best}
+ pl={w=12,h=16,face=1,cool=0,hurt=0}
+ home()
+ sparks={}
+ parts={}
+ dogs={}
+ for i=1,min(10,3+level) do add_dog() end
+ wizards={}
+ for i=1,min(3,1+flr((level-1)/3)) do
+  local m={w=12,h=16,face=-1,gone=0}
+  to_orb(m)
+  -- stagger them so they don't
+  -- all leave the orb together
+  m.wait=30+i*60
+  add(wizards,m)
+ end
+ state="play"
+ msg="find the doggies!"
+ msgt=60
+end
+
+-- back inside the pink tent
+function home()
+ pl.x=tent.x+6 pl.y=tent.y+tent.h-pl.h
+ pl.vx=0 pl.vy=0 pl.drop=0
+end
+
+function to_orb(m)
+ m.x=orb.x-2 m.y=orb.y+orb.h-m.h
+ m.vx=0 m.vy=0 m.drop=0 m.gone=0
+ m.wait=45
+ poof(m.x+6,m.y+8,{8,2,14})
+end
+
+-->8
+-- helpers
+
+function hit(a,b)
+ return a.x+2<b.x+b.w and b.x+2<a.x+a.w
+  and a.y+2<b.y+b.h and b.y+2<a.y+a.h
+end
+
+-- princess is safe in her tent
+function in_tent()
+ local cx=pl.x+pl.w/2
+ return cx>tent.x+4 and cx<tent.x+tent.w-4
+  and pl.y+pl.h>tent.y+6
+end
+
+-- maldrid is safe touching his orb
+function at_orb(m)
+ return m.gone==0 and abs(m.x+6-(orb.x+4))<10
+  and abs(m.y+m.h-(orb.y+orb.h))<4
+end
+
+-- gravity + one-way platforms
+function phys(e)
+ e.vy=min(e.vy+grav,4)
+ e.x=mid(0,e.x+e.vx,128-e.w)
+ local oldb=e.y+e.h
+ e.y+=e.vy
+ e.ground=false
+ if e.drop>0 then e.drop-=1 return end
+ if e.vy>=0 then
+  local nb=e.y+e.h
+  for p in all(plats) do
+   if e.x+e.w>p.x and e.x<p.x+p.w
+    and oldb<=p.y and nb>=p.y then
+    e.y=p.y-e.h
+    e.vy=0
+    e.ground=true
+    e.plat=p
+    return
+   end
+  end
+ end
+end
+
+function add_dog()
+ for tries=1,30 do
+  local p=rnd(plats)
+  if p!=orb.plat or tries>20 then
+   local d={x=p.x+rnd(max(1,p.w-10)),y=p.y-7,w=10,h=7,
+    plat=p,ph=rnd(),sit=0}
+   d.vx=(rnd()<0.5 and -1 or 1)*min(0.8,0.25+level*0.05)
+   if not hit(d,tent) then add(dogs,d) return end
+  end
+ end
+end
+
+function poof(x,y,cols)
+ for i=1,14 do
+  local a=rnd()
+  local s=0.5+rnd(1.5)
+  add(parts,{x=x,y=y,vx=cos(a)*s,vy=sin(a)*s,
+   c=rnd(cols),t=15+rnd(15)})
+ end
+end
+
+function wiz_spd()
+ return min(1.1,0.35+level*0.08)
+end
+
+-->8
+-- update
+
+function _update()
+ if msgt and msgt>0 then msgt-=1 end
+ for c in all(clouds) do
+  c.x+=c.s
+  if c.x>140 then c.x=-16 end
+ end
+ for i=#parts,1,-1 do
+  local p=parts[i]
+  p.x+=p.vx p.y+=p.vy p.t-=1
+  if p.t<=0 then deli(parts,i) end
+ end
+ if state=="play" then
+  update_princess()
+  for m in all(wizards) do update_wizard(m) end
+  update_sparks()
+  update_dogs()
+  if #dogs==0 then
+   state="win"
+   sfx(2)
+  end
+ elseif btnp(4) or btnp(5) then
+  if state=="title" or state=="over" then new_game()
+  elseif state=="win" then level+=1 start_level() end
+ end
+end
+
+function update_princess()
+ local p=pl
+ if p.hurt>0 then p.hurt-=1 end
+ if p.cool>0 then p.cool-=1 end
+ p.vx=0
+ if btn(0) then p.vx=-1.2 p.face=-1 end
+ if btn(1) then p.vx=1.2 p.face=1 end
+ local jump=btn(4) or btn(2)
+ if (btnp(4) or btnp(2)) and p.ground then
+  p.vy=-3.6
+  sfx(0)
+ end
+ if p.vy<0 and not jump then p.vy+=0.3 end
+ if btnp(3) and p.ground and p.plat.y<115 then p.drop=6 end
+ -- wave the wand
+ if btnp(5) and p.cool<=0 and #sparks<3 then
+  add(sparks,{x=p.x+4+p.face*7,y=p.y+3,w=5,h=5,
+   vx=2.8*p.face,vy=0})
+  p.cool=15
+  sfx(1)
+ end
+ phys(p)
+ if p.y>128 then hurt() end
+end
+
+function update_wizard(m)
+ if m.gone>0 then
+  m.gone-=1
+  if m.gone==0 then to_orb(m) end
+  return
+ end
+ if m.wait>0 then
+  m.wait-=1
+  m.vx=0
+ elseif m.ground then
+  if in_tent() then
+   -- can't get into the tent, so
+   -- he wanders off
+   m.vx=sgn(m.x-tent.x)*wiz_spd()*0.6
+  else
+   local dx=pl.x-m.x
+   if abs(dx)>2 then m.vx=sgn(dx)*wiz_spd() else m.vx=0 end
+   local pb,mb=pl.y+pl.h,m.y+m.h
+   if pb<mb-10 and rnd()<0.03 then m.vy=-3.6 end
+   if pb>mb+10 and m.plat.y<115 and rnd()<0.02 then m.drop=6 end
+  end
+ end
+ if m.vx!=0 then m.face=sgn(m.vx) end
+ phys(m)
+ if m.y>128 then to_orb(m) end
+ if not in_tent() and pl.hurt<=0 and hit(m,pl) then hurt() end
+end
+
+-- wand sparkles fly straight with
+-- a little twinkle
+function update_sparks()
+ for i=#sparks,1,-1 do
+  local s=sparks[i]
+  s.x+=s.vx
+  local gone=s.x<-5 or s.x>128
+  if rnd()<0.5 then
+   add(parts,{x=s.x+2,y=s.y+2,vx=0,vy=rnd(0.4)-0.2,
+    c=rnd({7,10,14}),t=8})
+  end
+  for m in all(wizards) do
+   if m.gone==0 and hit(s,m) then
+    gone=true
+    if at_orb(m) then
+     -- the orb protects him
+     poof(s.x,s.y,{8,2})
+     sfx(6)
+    else
+     poof(m.x+6,m.y+8,{13,14,7,10})
+     m.gone=90
+     score+=100
+     sfx(3)
+    end
+   end
+  end
+  if gone then deli(sparks,i) end
+ end
+end
+
+function update_dogs()
+ for i=#dogs,1,-1 do
+  local d=dogs[i]
+  -- doggies trot around and
+  -- sometimes sit down
+  if d.sit>0 then
+   d.sit-=1
+  else
+   d.x+=d.vx
+   local p=d.plat
+   if d.x<p.x or d.x+d.w>p.x+p.w or d.x<0 or d.x+d.w>128 then
+    d.vx=-d.vx
+    d.x=mid(max(0,p.x),d.x,min(128,p.x+p.w)-d.w)
+   end
+   if rnd()<0.005 then d.sit=40+rnd(60) end
+  end
+  if hit(d,pl) then
+   deli(dogs,i)
+   score+=50
+   poof(d.x+5,d.y+3,{14,7,10})
+   sfx(5)
+  end
+ end
+end
+
+function hurt()
+ lives-=1
+ sfx(4)
+ sparks={}
+ if lives<=0 then
+  state="over"
+  return
+ end
+ home()
+ pl.hurt=60
+ for m in all(wizards) do to_orb(m) end
+ msg="maldrid got you!"
+ msgt=45
+end
+
+-->8
+-- draw
+
+function _draw()
+ cls(12)
+ for c in all(clouds) do
+  circfill(c.x,c.y,5,7)
+  circfill(c.x+6,c.y-2,6,7)
+  circfill(c.x+12,c.y,5,7)
+ end
+ if state=="title" then draw_title() return end
+ for p in all(plats) do draw_plat(p) end
+ sspr(64,0,24,17,tent.x,tent.y)
+ -- glowing orb
+ local g=2+sin(t()*0.7)*1.5
+ circ(orb.x+4,orb.y+3,4+g,2)
+ sspr(88,0,8,9,orb.x,orb.y)
+ for d in all(dogs) do
+  local hop=0
+  if d.sit<=0 and sin(t()*3+d.ph)>0.6 then hop=1 end
+  sspr(32,0,10,7,d.x,d.y-hop,10,7,d.vx<0)
+ end
+ for s in all(sparks) do sspr(48,0,5,5,s.x,s.y) end
+ for m in all(wizards) do
+  if m.gone==0 then
+   if at_orb(m) then
+    circ(m.x+6,m.y+8,10+sin(t()*2),8)
+   end
+   sspr(16,0,12,16,m.x,m.y,12,16,m.face<0)
+  end
+ end
+ if pl.hurt==0 or pl.hurt%4<2 then
+  sspr(0,0,12,16,pl.x,pl.y,12,16,pl.face<0)
+ end
+ for p in all(parts) do pset(p.x,p.y,p.c) end
+ if state=="play" and in_tent() then
+  print("safe!",tent.x+3,tent.y-14,7)
+ end
+ draw_hud()
+ if msgt>0 then center_text(msg,60,7) end
+ if state=="over" then box("game over","score "..score.."  z: again") end
+ if state=="win" then box("all doggies found!","z: next level") end
+end
+
+function draw_plat(p)
+ local x=p.x
+ while x<p.x+p.w do
+  local w=min(8,p.x+p.w-x)
+  sspr(56,0,w,6,x,p.y)
+  x+=8
+ end
+end
+
+function draw_hud()
+ rectfill(0,0,127,7,1)
+ print("score "..score,1,1,7)
+ print("lv"..level,50,1,6)
+ sspr(32,0,10,7,64,0)
+ print(#dogs,76,1,15)
+ for i=1,lives do
+  sspr(0,0,12,16,124-i*7,0,5,7)
+ end
+end
+
+function center_text(s,y,c)
+ print(s,64-#s*2,y,c)
+end
+
+function box(a,b)
+ rectfill(14,50,113,76,1)
+ rect(14,50,113,76,14)
+ center_text(a,56,7)
+ center_text(b,66,6)
+end
+
+function draw_title()
+ local cols={8,9,10,11,12,2}
+ for i=1,6 do
+  circ(64,74,52-i*3,cols[i])
+  circ(64,74,51-i*3,cols[i])
+ end
+ rectfill(0,75,127,127,12)
+ center_text("princess lucille",12,7)
+ sspr(0,0,12,16,22,42,24,32)
+ sspr(32,0,10,7,52,62,20,14)
+ sspr(16,0,12,16,82,42,24,32,true)
+ for i=0,15 do sspr(56,0,8,6,i*8,78) end
+ center_text("find all the doggies!",87,7)
+ center_text("zap maldrid with your wand",95,7)
+ center_text("hide in your pink tent",103,14)
+ center_text("arrows move  z jump  x wand",113,1)
+ center_text("press z to start",121,1)
+end
+__gfx__
+0000a0e0a00000000000020000000000000000ff0000000000a00000888888880000000000004aa0000000000028820000000000000000000000000000000000
+0000aaaaa00000000000220000000000400004f1f0000000aaaaa000999999990000000000004a00000000000288e72000000000000000000000000000000000
+00044444400000000002220000000000400004fff10000000a7a0000aaaaaaaa0000000000004000000000002888ee8200000000000000000000000000000000
+0004ffff40a000000002a2200000000004ffffffe00000000aaa0000bbbbbbbb00000000000fe000000000002888888200000000000000000000000000000000
+0004f1f1faaa000000222222000000000ffff4fff0000000a000a000cccccccc00000000000fe000000000002888888200000000000000000000000000000000
+0004ffeff0a0000002222222208000000ffffffff000000000000000222222220000000000ffee00000000000288882000000000000000000000000000000000
+00044fff00700000000f1f1f088800000f0f00f0f00000000000000000000000000000000fffeee0000000000022220000000000000000000000000000000000
+0000eeee00700000000fffff008000000000000000000000000000000000000000000000efffeeef000000000555555000000000000000000000000000000000
+000eeeeeeff000000007777700400000000000000000000000000000000000000000000eefffeeeff00000005555555500000000000000000000000000000000
+00eeeeeee0000000002777772040000000000000000000000000000000000000000000eeeff22eefff0000000000000000000000000000000000000000000000
+00eeeeeee0000000022277722ff000000000000000000000000000000000000000000feeeff22eefffe000000000000000000000000000000000000000000000
+0eeeeeeeee0000000222272220400000000000000000000000000000000000000000ffeeef2222efffee00000000000000000000000000000000000000000000
+0eee7eee7e00000002a222222040000000000000000000000000000000000000000fffeeef2222efffeee0000000000000000000000000000000000000000000
+eeeeeeeeeee000000222222a204000000000000000000000000000000000000000efffeee222222fffeeef000000000000000000000000000000000000000000
+000f000f000000002222222220400000000000000000000000000000000000000eefffeee222222fffeeeff00000000000000000000000000000000000000000
+00dd000dd0000000001100011040000000000000000000000000000000000000eeefffee22222222ffeeefff0000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000000000000000000000dddddddd22222222dddddddd0000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+__label__
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccc777c777c777c77ccc77c777cc77cc77ccccc7ccc7c7cc77c777c7ccc7ccc777ccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccc7c7c7c7cc7cc7c7c7ccc7ccc7ccc7ccccccc7ccc7c7c7cccc7cc7ccc7ccc7ccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccc777c77ccc7cc7c7c7ccc77cc777c777ccccc7ccc7c7c7cccc7cc7ccc7ccc77cccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccc7ccc7c7cc7cc7c7c7ccc7ccccc7ccc7ccccc7ccc7c7c7cccc7cc7ccc7ccc7ccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccc7ccc7c7c777c7c7cc77c777c77cc77cccccc777cc77cc77c777c777c777c777ccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccc8888888888888ccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccc8888888888888888888888888ccccccccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccccccccccccccccc888c88888ccccccccccccc88888c888cccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccc8888888ccccc9999999999999ccccc8888888ccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccc88c88cccc99999999999999999999999cccc88c88ccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccc88888ccc99999999ccccccccccccc99999999ccc88888ccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccc8888ccc999999cccccaaaaaaaaaaaaaccccc999999ccc8888ccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccc8888ccc99999cccaaaaaaaaaaaaaaaaaaaaaaaccc99999ccc8888ccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccccc8c8ccc9999cccaaaaaaaacccccccccccccaaaaaaaaccc9999ccc8c8cccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccc888cc9999cccaaaaacccccbbbbbbbbbbbbbcccccaaaaaccc9999cc888ccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccc888cc9999ccaaaaaccccbbbbbbbbbbbbbbbbbbbbbccccaaaaacc9999cc888ccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccc8c8cc9c9ccaacaacccbbbbbbbcccccccccccccbbbbbbbcccaacaacc9c9cc8c8cccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccc888cc999ccacaaccbbbbbbcccccccccccccccccccccbbbbbbccaacacc999cc888ccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccc88cc999ccaaaaccbbbbbcccccccccccccccccccccccccccbbbbbccaaaacc999cc88cccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccc88cc9c9ccacaccbbbbcccccccccccccccccccccccccccccccccbbbbccacacc9c9cc88ccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccc88cc999ccaaaccbcbccccccccccccc22222222222cccccccccccccbcbccaaacc999cc88cccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccc88cc99ccaaaccbbbbcccccccccc2222222222222222222ccccccccccbbbbccaaacc99cc88ccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccc88caa9ceecaaabcbccccccccc2222222ccccccccccc2222222cccccccccbcbccaca2299cc88cccccccccccccccccccccccccc
+cccccccccccccccccccccccccc88ccaacceeacaabbccccccc222222ccccccccccccccccccc222222cccccccbbbccac22c99cc88ccccccccccccccccccccccccc
+ccccccccccccccccccccccccc8c8c9aaaaaaaaaacccccccc2c22ccccccccccccccccccccccccc22c2ccccccccbbbca222299c8c8cccccccccccccccccccccccc
+ccccccccccccccccccccccccc88c9caaaaaaaaaacccccc2222ccccccccccccccccccccccccccccc2222cccccccbcbc22229c9c88cccccccccccccccccccccccc
+cccccccccccccccccccccccc88cc444444444444ccccc222ccccccccccccccccccccccccccccccccc222cccccccbcb2222229cc88ccccccccccccccccccccccc
+ccccccccccccccccccccccc88cc9444444444444ccc222cccccccccccccccccccccccccccccccccccc72227cccccbc22222299cc88cccccccccccccccccccccc
+cccccccccccccccccccccc8c8c9944ffffffff44ccaa2cccccccccccccccccccccccccccccccccccc7772727cccc2222aa22c99c8c8ccccccccccccccccccccc
+cccccccccccccccccccccc88c9c944ffffffff44c2aacccccccccccccccccccccccccccccccccccc777772227ccc2222aa22c9c9c88ccccccccccccccccccccc
+ccccccccccccccccccccc88cc99c44ff11ff11ffaaaaaacccccccccccccccccccccccccccccc7777777777722722222222222299cc88cccccccccccccccccccc
+ccccccccccccccccccccc88c99cc44ff11ff11ffaaaaaaccccccccccccccccccccccccccccc777777777777722222222222222c99c88cccccccccccccccccccc
+cccccccccccccccccccc88cc99ca44ffffeeffffccaacccccccccccccccccccccccccccccc7777777777887722222222222222229cc88ccccccccccccccccccc
+cccccccccccccccccccc88c99cac44ffffeeffffccaaccccccccccccccccccccccccccccc777777777778877222222222222222299c88ccccccccccccccccccc
+ccccccccccccccccccc88cc99caa4444ffffff2ccc77ccccccccccccccccccccccccccccc77777777788888877ff11ff11ffcaac99cc88cccccccccccccccccc
+ccccccccccccccccccc88c99caca4444ffffffcccc77ccccccccccccccccccccccccccccc77777777788888877ff11ff11ffcacac99c88cccccccccccccccccc
+cccccccccccccccccc8c8c99caacbbeeeeeeeecccc77ccccccccccccccccccccccccccccc77777777777887777ffffffffffbcaac99c8c8ccccccccccccccccc
+cccccccccccccccccc88c99ccaacbbeeeeeeeecccc77ccccccccccccccccccccccccccccc77777777777887777ffffffffffbcaacc99c88ccccccccccccccccc
+cccccccccccccccccc88c99caacbeeeeeeeeeeeeffffcccccccccccccccccccccccccccccc77777777774477777777777777bbcaac99c88ccccccccccccccccc
+ccccccccccccccccc88cc99caacbeeeeeeeeeeeeffffccccccccccccccccccccccccccccccc7777777774477777777777777bbcaac99cc88cccccccccccccccc
+ccccccccccccccccc88c99caaceeeeeeeeeeeeeecccccccccccccccccccccccccccccccccccc77777ccc44cc22777777777722ccaac99c88cccccccccccccccc
+ccccccccccccccccc88c99caaceeeeeeeeeeeeeecccccccccccccccccccccccccccccccccccccccccccc44cc22777777777722bcaac99c88cccccccccccccccc
+cccccccccccccccc8c8c99caaceeeeeeeeeeeeeeccccccccccccccccccccccccffffcccc77777cccccccffff2222777777222222aac99c8c8ccccccccccccccc
+cccccccccccccccc88c99caacceeeeeeeeeeeeeeccccccccccccccccccccccccffffccc7777777ccccccffff2222777777222222caac99c88ccccccccccccccc
+cccccccccccccccc88c99caaeeeeeeeeeeeeeeeeeecccccccccc44cccccccc44ff11ff777777777ccccc44cc2222227722222222caac99c88ccccccccccccccc
+cccccccccccccccc88c99caaeeeeeeeeeeeeeeeeeecccccccccc44cccccccc44ff11ff7777777777777c44cc2222227722222222caac99c88ccccccccccccccc
+cccccccccccccccc88c99caaeeeeee77eeeeee77eecccccccccc44cccccccc44ffffff1177777777777744cc222222222222aa22caac99c88ccccccccccccccc
+cccccccccccccccc88c99caaeeeeee77eeeeee77eecccccccccc44cccccccc44ffffff1177777777777744cc222222222222aa22caac99c88ccccccccccccccc
+ccccccccccccccc88c99caeeeeeeeeeeeeeeeeeeeeeecccccccccc44ffffffffffffee7777777777777744cc22aa222222222222bcaac99c88cccccccccccccc
+ccccccccccccccc88c99caeeeeeeeeeeeeeeeeeeeeeecccccccccc44ffffffffffffee7777777777777744cc22aa222222222222bcaac99c88cccccccccccccc
+ccccccccccccccc88c99caacbbccff22ccccffccccccccccccccccffffffff44ffffff7777777777777744cc222222222222222222aac99c88cccccccccccccc
+ccccccccccccccc88c99caacbbccff22ccccffccccccccccccccccffffffff44ffffff7777777777777744cc222222222222222222aac99c88cccccccccccccc
+ccccccccccccccc88c99caacbbdddd22ccccddddccccccccccccccffffffffffffffff7777777777777744cc1111ccccc21111cbbcaac99c88cccccccccccccc
+ccccccccccccccc88c99caacbbdddd22ccccddddccccccccccccccffffffffffffffff7777777777777744cc1111ccccc21111cbbcaac99c88cccccccccccccc
+ccccccccccccccc88c99caacbbcccc22ccccccccccccccccccccccffccffccccff77ff77777777777777ccccccccccccc22ccccbbcaac99c88cccccccccccccc
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccffccffccccffccffcccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
+99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccc777c777c77cc77cccccc777c7ccc7ccccccc777c7c7c777ccccc77ccc77cc77cc77c777c777cc77cc7cccccccccccccccccccccccc
+cccccccccccccccccccccc7cccc7cc7c7c7c7ccccc7c7c7ccc7cccccccc7cc7c7c7ccccccc7c7c7c7c7ccc7cccc7cc7ccc7cccc7cccccccccccccccccccccccc
+cccccccccccccccccccccc77ccc7cc7c7c7c7ccccc777c7ccc7cccccccc7cc777c77cccccc7c7c7c7c7ccc7cccc7cc77cc777cc7cccccccccccccccccccccccc
+cccccccccccccccccccccc7cccc7cc7c7c7c7ccccc7c7c7ccc7cccccccc7cc7c7c7ccccccc7c7c7c7c7c7c7c7cc7cc7ccccc7ccccccccccccccccccccccccccc
+cccccccccccccccccccccc7ccc777c7c7c777ccccc7c7c777c777cccccc7cc7c7c777ccccc777c77cc777c777c777c777c77ccc7cccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccc777c777c777ccccc777c777c7ccc77cc777c777c77cccccc7c7c777c777c7c7ccccc7c7cc77c7c7c777ccccc7c7c777c77cc77cccccccccccccc
+cccccccccccccc7c7c7c7c7ccccc777c7c7c7ccc7c7c7c7cc7cc7c7ccccc7c7cc7ccc7cc7c7ccccc7c7c7c7c7c7c7c7ccccc7c7c7c7c7c7c7c7ccccccccccccc
+ccccccccccccc7cc777c777ccccc7c7c777c7ccc7c7c77ccc7cc7c7ccccc7c7cc7ccc7cc777ccccc777c7c7c7c7c77cccccc7c7c777c7c7c7c7ccccccccccccc
+cccccccccccc7ccc7c7c7ccccccc7c7c7c7c7ccc7c7c7c7cc7cc7c7ccccc777cc7ccc7cc7c7ccccccc7c7c7c7c7c7c7ccccc777c7c7c7c7c7c7ccccccccccccc
+cccccccccccc777c7c7c7ccccccc7c7c7c7c777c777c7c7c777c777ccccc777c777cc7cc7c7ccccc777c77ccc77c7c7ccccc777c7c7c7c7c777ccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccececeeeceecceeeccccceeeceeccccccececceecececeeeccccceeeceeeceeccececcccceeeceeeceecceeeccccccccccccccccccccc
+ccccccccccccccccccccececceccecececccccccceccececccccececececececececccccececceccececececccccceccecccececcecccccccccccccccccccccc
+cccccccccccccccccccceeecceccececeeccccccceccececcccceeecececececeecccccceeecceccececeecccccccecceeccececcecccccccccccccccccccccc
+ccccccccccccccccccccececceccecececccccccceccececccccccecececececececccccecccceccececececccccceccecccececcecccccccccccccccccccccc
+ccccccccccccccccccccececeeeceeeceeeccccceeecececcccceeeceeccceecececcccceccceeecececececcccccecceeecececcecccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccc111c111c111cc11c1c1cc11ccccc111cc11c1c1c111ccccccccc111ccccc111c1c1c111c111ccccccccc1c1ccccc1c1c111c11cc11cccccccccccc
+cccccccccc1c1c1c1c1c1c1c1c1c1c1ccccccc111c1c1c1c1c1ccccccccccccc1cccccc1cc1c1c111c1c1ccccccccc1c1ccccc1c1c1c1c1c1c1c1ccccccccccc
+cccccccccc111c11cc11cc1c1c1c1c111ccccc1c1c1c1c1c1c11ccccccccccc1ccccccc1cc1c1c1c1c111cccccccccc1cccccc1c1c111c1c1c1c1ccccccccccc
+cccccccccc1c1c1c1c1c1c1c1c111ccc1ccccc1c1c1c1c111c1ccccccccccc1cccccccc1cc1c1c1c1c1ccccccccccc1c1ccccc111c1c1c1c1c1c1ccccccccccc
+cccccccccc1c1c1c1c1c1c11cc111c11cccccc1c1c11ccc1cc111ccccccccc111ccccc11ccc11c1c1c1ccccccccccc1c1ccccc111c1c1c1c1c111ccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccc111c111c111cc11cc11ccccc111ccccc111cc11cccccc11c111c111c111c111ccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccc1c1c1c1c1ccc1ccc1ccccccccc1cccccc1cc1c1ccccc1cccc1cc1c1c1c1cc1cccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccc111c11cc11cc111c111cccccc1ccccccc1cc1c1ccccc111cc1cc111c11ccc1cccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccc1ccc1c1c1ccccc1ccc1ccccc1cccccccc1cc1c1ccccccc1cc1cc1c1c1c1cc1cccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccc1ccc1c1c111c11cc11cccccc111cccccc1cc11cccccc11ccc1cc1c1c1c1cc1cccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+
+__sfx__
+00040000183501c350203402433028320000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000200003005034040370303c020370103c0100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0004000024550285502b5503055030540305300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000300003c72037720307302b740247401f7301872000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000600001825014250102400c24008230042200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000300002b150301502d1403213000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000400000c6400a630086200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
