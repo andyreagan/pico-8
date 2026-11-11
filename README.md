@@ -13,6 +13,7 @@ since 2026 [Claude Code](https://claude.com/claude-code) writes most of the code
 | Dave Digger Bot | Dig for diamonds, throw chickens at the bots | [play](https://andyreagan.github.io/pico-8/dave-digger-bot/) |
 | Bunny Quest | Find the axe and sword, beat the turtles, catch the bunny | [play](https://andyreagan.github.io/pico-8/bunny-quest/) |
 | Super Animals | Five animals with powers race the boss to the ultra diamond | [play](https://andyreagan.github.io/pico-8/super-animals/) |
+| Super Animals 2 | Super Animals for two players at once | [play](https://andyreagan.github.io/pico-8/super-animals-2/) |
 | Princess Lucille | Collect doggies, zap Maldrid the evil wizard | [play](https://andyreagan.github.io/pico-8/princess-lucille/) |
 | Rainbow Unicorn | Rainbow blocks, coins, a robber and a fort | [play](https://andyreagan.github.io/pico-8/rainbow-unicorn/) |
 | Apple Guy vs the Duck | Poison apples and diamond robots | [play](https://andyreagan.github.io/pico-8/apple-guy/) |
