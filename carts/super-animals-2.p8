@@ -18,7 +18,7 @@ function _init()
   {name="snail",spd=0.8,jump=2.9,w=10,h=7,sh=8,
    info={"sticks to walls+ceilings","x: hide in shell (safe!)","if stuck, you fall off"}},
   {name="penguin",spd=1.1,jump=3.2,w=8,h=11,sh=11,
-   info={"slides fast on ice and","swims in water!","x: belly slide"}},
+   info={"swims in water!","x on ice: belly slide,","it knocks out monsters"}},
  }
  -- who picked what. p1 is yellow,
  -- p2 is pink
@@ -169,7 +169,7 @@ end
 function spawn(p)
  p.x=resx-p.n*10 p.y=resy-p.h
  p.vx=0 p.vy=0 p.stick=nil p.shell=false p.slide=0
- p.bub=false p.fire=false
+ p.bub=false p.fire=false p.ride=nil
  p.hurt=90
 end
 
@@ -187,7 +187,7 @@ end
 function float(p)
  p.bub=true p.bt=0
  p.vx=0 p.vy=0 p.stick=nil p.shell=false p.slide=0
- p.fire=false
+ p.fire=false p.ride=nil
 end
 
 function lose_life(p)
@@ -210,10 +210,11 @@ function lose_life(p)
 end
 
 -- monsters can't hurt you right
--- after a hit, in a bubble, or a
--- snail in its shell
+-- after a hit, in a bubble, a
+-- snail in its shell or a sliding
+-- penguin
 function safe(p)
- return p.out or p.bub or p.hurt>0 or p.shell
+ return p.out or p.bub or p.hurt>0 or p.shell or p.slide>0
 end
 
 -- fire and rainbows: zap monsters,
@@ -247,6 +248,7 @@ function _update()
   for p in all(ps) do
    if state=="play" and not p.out then update_player(p) end
   end
+  if state=="play" then carry() end
   if state=="play" then update_cam() end
   if state=="play" then update_mons() end
   if state=="play" then update_beams() end
@@ -293,6 +295,13 @@ function update_player(p)
  if p.hurt>0 then p.hurt-=1 end
  if p.cool>0 then p.cool-=1 end
  if p.bub then update_bub(p) return end
+ -- idle = not touching any button.
+ -- an idle player can ride along
+ -- with their buddy (see carry)
+ p.idle=true
+ for i=0,5 do
+  if btn(i,p.n) then p.idle=false p.ride=nil end
+ end
  local dir=0
  if btn(0,p.n) then dir=-1 end
  if btn(1,p.n) then dir=1 end
@@ -304,7 +313,9 @@ function update_player(p)
   lose_life(p)
   return
  end
- if not (c.name=="snail" and snail_update(p,dir)) then
+ if p.ride then
+  -- riding: carry() moves us
+ elseif not (c.name=="snail" and snail_update(p,dir)) then
   walk(p,c,dir,wet)
  end
  if p.y>120 then lose_life(p) return end
@@ -327,6 +338,36 @@ function update_player(p)
  end
 end
 
+-- if you stand still while you
+-- are touching your buddy, you go
+-- along with them
+function carry()
+ for p in all(ps) do
+  local o=buddy(p)
+  if p.out or p.bub or not o then
+   p.ride=nil
+  elseif p.ride then
+   local nx,ny=o.x+p.ox,o.y+p.oy
+   -- you get left behind if you
+   -- don't fit, or at the water. a
+   -- penguin can't take you out
+   -- over the water at all
+   if blocked(p,nx,ny) or (p.c.name!="penguin"
+    and (box_hits(nx,ny,p.w,p.h,is_water)
+     or (o.c.name=="penguin" and over_water(p,nx,ny)))) then
+    p.ride=nil
+   else
+    p.x=nx p.y=ny p.vx=0 p.vy=0
+    p.ground=o.ground
+    if not p.shell then p.face=o.face end
+   end
+  elseif p.idle and not o.idle and not o.ride and overlap(p,o) then
+   p.ride=o p.ox=p.x-o.x p.oy=p.y-o.y
+   p.stick=nil p.slide=0 p.fire=false
+  end
+ end
+end
+
 function update_bub(p)
  local o=buddy(p)
  if not o then spawn(p) return end
@@ -345,16 +386,21 @@ end
 -- you're the penguin)
 function can_pop(p)
  if blocked(p,p.x,p.y) then return false end
- if p.c.name=="penguin" then return true end
+ return p.c.name=="penguin" or not over_water(p,p.x,p.y)
+end
+
+-- would p fall into water from
+-- x,y?
+function over_water(p,x,y)
  for i=0,1 do
-  local tx=flr((p.x+i*(p.w-1))/8)
-  for ty=flr(p.y/8),14 do
+  local tx=flr((x+i*(p.w-1))/8)
+  for ty=flr(y/8),14 do
    local ch=tile(tx,ty)
-   if ch=="w" then return false end
+   if ch=="w" then return true end
    if is_solid(ch) then break end
   end
  end
- return true
+ return false
 end
 
 -- the camera sits between the
@@ -383,9 +429,12 @@ function walk(p,c,dir,wet)
   -- the penguin, who zooms
   if c.name=="penguin" then spd=2.4 else spd*=0.5 end
  end
+ -- the belly slide only works on
+ -- ice (it can finish a hop)
+ if p.ground and not onice then p.slide=0 end
  if p.slide>0 then
   p.slide-=1
-  p.vx=p.face*(onice and 3 or 2.2)
+  p.vx=p.face*3
  elseif c.name=="penguin" and onice then
   -- slippery! ease toward speed
   p.vx+=(dir*spd-p.vx)*0.06
@@ -412,6 +461,9 @@ function walk(p,c,dir,wet)
  end
  powers(p,c)
  move(p)
+ -- a sliding penguin knocks out
+ -- the bad guys
+ if p.slide>0 then zap(p) end
  -- snail sticks to walls and
  -- ceilings it bumps into
  if c.name=="snail" then
@@ -448,7 +500,8 @@ function powers(p,c)
    sfx(2)
   end
  elseif n=="penguin" then
-  if btnp(5,p.n) and p.ground and p.slide<=0 then
+  if btnp(5,p.n) and p.slide<=0 and p.ground
+   and tile_at(p.x+p.w/2,p.y+p.h+1)=="i" then
    p.slide=30
    sfx(5)
   end

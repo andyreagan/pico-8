@@ -18,7 +18,7 @@ function _init()
   {name="snail",spd=0.8,jump=2.9,w=10,h=7,
    info={"sticks to walls+ceilings","x: hide in shell (safe!)","if stuck, you fall off"}},
   {name="penguin",spd=1.1,jump=3.2,w=8,h=11,
-   info={"slides fast on ice and","swims in water!","x: belly slide"}},
+   info={"swims in water!","x on ice: belly slide,","it knocks out monsters"}},
  }
  sel=1
  state="select"
@@ -171,9 +171,10 @@ function lose_life()
 end
 
 -- monsters can't hurt you right
--- after a hit, or a snail in its shell
+-- after a hit, a snail in its shell
+-- or a sliding penguin
 function safe()
- return pl.hurt>0 or pl.shell
+ return pl.hurt>0 or pl.shell or pl.slide>0
 end
 
 -- fire and rainbows: zap monsters,
@@ -255,9 +256,12 @@ function walk(p,c,dir,wet)
   -- the penguin, who zooms
   if c.name=="penguin" then spd=2.4 else spd*=0.5 end
  end
+ -- the belly slide only works on
+ -- ice (it can finish a hop)
+ if p.ground and not onice then p.slide=0 end
  if p.slide>0 then
   p.slide-=1
-  p.vx=p.face*(onice and 3 or 2.2)
+  p.vx=p.face*3
  elseif c.name=="penguin" and onice then
   -- slippery! ease toward speed
   p.vx+=(dir*spd-p.vx)*0.06
@@ -284,6 +288,9 @@ function walk(p,c,dir,wet)
  end
  powers(p,c)
  move(p)
+ -- a sliding penguin knocks out
+ -- the bad guys
+ if p.slide>0 then zap(p) end
  -- snail sticks to walls and
  -- ceilings it bumps into
  if c.name=="snail" then
@@ -320,7 +327,8 @@ function powers(p,c)
    sfx(2)
   end
  elseif n=="penguin" then
-  if btnp(5) and p.ground and p.slide<=0 then
+  if btnp(5) and p.slide<=0 and p.ground
+   and tile_at(p.x+p.w/2,p.y+p.h+1)=="i" then
    p.slide=30
    sfx(5)
   end
