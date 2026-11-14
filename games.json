@@ -1,4 +1,5 @@
 [
+ {"slug": "night-owl", "title": "Night Owl", "year": 2026, "blurb": "Pick a penguin, snail, unicorn or dragon and catch the fireflies on the moon blocks at night. Shoot ice, shells, stars or fire at the owl, and hide in your own safe house when he gets close.", "controls": "left/right picks an animal, arrows move, z jumps, x shoots, down drops through"},
  {"slug": "evil-blob", "title": "The Evil Blob", "year": 2026, "blurb": "Smash boxes to find gold and the four robot parts, build the bot, and let it shoot fire balls at the evil blob. Eight levels in four lands, each with a bigger blob, and baby blobs from level 4.", "controls": "arrows walk, x smashes a box, z builds the bot"},
  {"slug": "dave-digger-bot", "title": "Dave Digger Bot", "year": 2026, "blurb": "Dig through the dirt, grab the diamonds, and throw chickens at the bots.", "controls": "arrows dig, z throws a chicken"},
  {"slug": "bunny-quest", "title": "Bunny Quest", "year": 2026, "blurb": "Explore the world, find the hidden axe and sword, beat the evil turtles, visit the villagers and catch the bunny.", "controls": "arrows walk, x swings, z knocks / talks / sleeps / switches weapon"},
