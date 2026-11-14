@@ -8,6 +8,14 @@ __lua__
 pnames={"head","arms","body","legs"}
 -- abel's robot parts: sx,sy,w,h
 pspr={{35,6,6,5},{59,7,6,3},{84,7,6,6},{109,10,4,4}}
+maxlevel=8
+-- the land changes every 2 levels
+lands={
+ {n="the woods",g=3,d=11},
+ {n="the desert",g=15,d=9},
+ {n="the snow",g=7,d=6},
+ {n="blob land",g=2,d=14},
+}
 
 function _init()
  state="title" t=0
@@ -41,7 +49,8 @@ function place(o)
 end
 
 function start_level()
- ww=256+level*64 wh=ww
+ ww=min(256+level*64,512) wh=ww
+ land=lands[(level+1)\2]
  px=ww/2-3 py=wh/2-6
  pdir=1 fdx=1 fdy=0 pwalk=0
  inv=0 punch=0
@@ -50,7 +59,7 @@ function start_level()
  got={} nparts=0 bot=nil
  msg="" msgt=0
  -- what is in the boxes
- local nb=10+level*4
+ local nb=min(10+level*4,26)
  local c={1,2,3,4,"heart","diamond"}
  for i=7,nb do
   add(c,i%5<3 and "gold" or "none")
@@ -63,22 +72,32 @@ function start_level()
   local b=place{k="box",w=10,h=8,hp=2,shake=0}
   if b then b.inside=c[i] add(boxes,b) end
  end
- for i=1,3+level do place{k="pond",w=26,h=14} end
- for i=1,6+level*3 do place{k="tree",w=6,h=4} end
- for i=1,5+level*2 do place{k="rock",w=10,h=6} end
+ for i=1,min(3+level,8) do place{k="pond",w=26,h=14} end
+ for i=1,min(6+level*3,24) do place{k="tree",w=6,h=4} end
+ for i=1,min(5+level*2,16) do place{k="rock",w=10,h=6} end
  for i=1,ww/3 do
-  add(decor,{x=rnd(ww),y=rnd(wh),c=rnd({11,11,11,10,14})})
+  add(decor,{x=rnd(ww),y=rnd(wh),c=rnd({land.d,land.d,land.d,10,14})})
  end
  -- the evil blob starts far away
- local s=.5+level*.5
- blob={s=s,hp=4+level*4,flash=0,wt=0}
- blob.maxhp=blob.hp
+ blob=new_blob(.65+level*.35,6+level*2,110)
+ -- baby blobs from level 4
+ minis={}
+ for i=1,level-3 do
+  local m=new_blob(.5,1,70)
+  m.mini=true
+  add(minis,m)
+ end
+ say("level "..level..": "..land.n,120)
+end
+
+function new_blob(s,hp,far)
+ local b={s=s,hp=hp,maxhp=hp,flash=0,wt=0}
  repeat
-  blob.x=20+rnd(ww-40)
-  blob.y=30+rnd(wh-50)
- until dist(blob.x,blob.y,px,py)>110
- blob.tx=blob.x blob.ty=blob.y
- say("level "..level..": find the parts!",120)
+  b.x=20+rnd(ww-40)
+  b.y=30+rnd(wh-50)
+ until dist(b.x,b.y,px,py)>far
+ b.tx=b.x b.ty=b.y
+ return b
 end
 
 function dist(x1,y1,x2,y2)
@@ -218,16 +237,25 @@ function open_box(b)
 end
 
 function upd_blob(cx,cy)
- local b=blob
+ upd_one(blob,cx,cy)
+ for m in all(minis) do
+  if (state=="play") upd_one(m,cx,cy)
+ end
+end
+
+function upd_one(b,cx,cy)
  if (b.flash>0) b.flash-=1
  local d=dist(b.x,b.y,cx,cy)
  local sp=.25
- if bot or d<56+level*8 then
+ if b.mini then
+  if (d<50) b.tx=cx b.ty=cy sp=.4
+ elseif bot or d<min(56+level*8,100) then
   -- chase the player
   b.tx=cx b.ty=cy
-  sp=.3+level*.1
+  sp=min(.33+level*.07,.8)
   if (bot) sp+=.1
- else
+ end
+ if sp==.25 then
   b.wt-=1
   if b.wt<=0 or dist(b.x,b.y,b.tx,b.ty)<4 then
    b.tx=20+rnd(ww-40)
@@ -247,7 +275,7 @@ function upd_blob(cx,cy)
   if lives<=0 then
    state="over" t=0
   else
-   say("the evil blob got you!")
+   say(b.mini and "a baby blob got you!" or "the evil blob got you!")
   end
  end
 end
@@ -255,6 +283,12 @@ end
 function upd_bot(cx,cy)
  if (not bot) return
  local o,b=bot,blob
+ -- aim at the closest blob
+ local bd=dist(o.x,o.y-9,b.x,b.y)
+ for m in all(minis) do
+  local d=dist(o.x,o.y-9,m.x,m.y)
+  if (d<bd and d<84) b=m bd=d
+ end
  -- follow the player
  local gx,gy=cx-pdir*10,py+12
  local d=dist(o.x,o.y,gx,gy)
@@ -266,8 +300,7 @@ function upd_bot(cx,cy)
  if (b.x<o.x) o.d=-1 else o.d=1
  -- shoot fire balls
  o.cool-=1
- local bd=dist(o.x,o.y-9,b.x,b.y)
- if o.cool<=0 and bd<84 then
+if o.cool<=0 and bd<84 then
   o.cool=40
   add(balls,{x=o.x,y=o.y-9,dx=(b.x-o.x)/bd*2.2,dy=(b.y-o.y+9)/bd*2.2,l=50})
   sfx(6)
@@ -275,25 +308,37 @@ function upd_bot(cx,cy)
  for f in all(balls) do
   f.x+=f.dx f.y+=f.dy f.l-=1
   if (f.l%2==0) add(fx,{x=f.x,y=f.y,dx=0,dy=0,c=9,l=5})
-  if abs(f.x-b.x)<7*b.s and abs(f.y-b.y)<6*b.s then
+  local b=nil
+  if (near(f,blob)) b=blob
+  for m in all(minis) do
+   if (near(f,m)) b=m
+  end
+  if b then
    del(balls,f)
    b.hp-=1 b.flash=6
    b.x+=f.dx*2 b.y+=f.dy*2
    puff(f.x,f.y,10,6) sfx(7)
-   if b.hp<=0 then
+   if b.hp<=0 and b.mini then
+    del(minis,b)
+    puff(b.x,b.y,11,12)
+   elseif b.hp<=0 then
     for i=1,5 do
      puff(b.x+rnd(16)-8,b.y+rnd(12)-6,rnd({11,3,10}),8)
     end
     sfx(9)
     balls={}
     t=0
-    if (level>=3) state="win" else state="clear"
+    if (level>=maxlevel) state="win" else state="clear"
     return
    end
   elseif f.l<0 then
    del(balls,f)
   end
  end
+end
+
+function near(f,b)
+ return abs(f.x-b.x)<7*b.s+1 and abs(f.y-b.y)<6*b.s+1
 end
 
 -- drawing ------------------
@@ -386,11 +431,11 @@ function draw_world()
  local cx=mid(0,px-61,ww-128)
  local cy=mid(0,py-58,wh-128)
  camx=cx camy=cy
- cls(3)
+ cls(land.g)
  camera(cx,cy)
  for d in all(decor) do
   pset(d.x,d.y,d.c)
-  if (d.c==11) pset(d.x+1,d.y-1,11)
+  if (d.c==land.d) pset(d.x+1,d.y-1,d.c)
  end
  for s in all(solids) do
   if s.k=="pond" then
@@ -415,6 +460,9 @@ function draw_world()
  if state!="win" and state!="clear" then
   put(blob.y+7*blob.s,draw_blob,blob.x,blob.y,blob.s,blob.flash>0)
  end
+ for m in all(minis) do
+  put(m.y+4,draw_blob,m.x,m.y,m.s,m.flash>0)
+ end
  if bot then
   put(bot.y,draw_bot,bot.x,bot.y+(t%16<8 and 0 or -1),bot.d<0)
  end
@@ -427,7 +475,7 @@ function draw_world()
  -- punch
  if punch>0 then
   local hx,hy=px+3+fdx*8,py+8+fdy*8
-  circ(hx,hy,2+(6-punch)/2,7)
+  circ(hx,hy,2+(6-punch)/2,land.g==7 and 5 or 7)
  end
  for f in all(balls) do draw_fire(f.x,f.y) end
  for p in all(fx) do pset(p.x,p.y,p.c) end
