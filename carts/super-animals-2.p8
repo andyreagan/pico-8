@@ -8,20 +8,28 @@ __lua__
 
 function _init()
  grav=0.25
+ -- ic: the drawing (x,y,w,h on the
+ -- sprite sheet, true if it was
+ -- drawn facing left)
  chars={
-  {name="cheetah",spd=2,jump=4.6,w=14,h=12,sh=16,
+  {name="cheetah",spd=2,jump=4.6,w=14,h=12,sh=16,ic={8,1,26,16,true},
    info={"fastest runner and","highest jumper!","x: hold to sprint"}},
-  {name="dragon",spd=1.2,jump=3.6,w=12,h=10,sh=12,
+  {name="dragon",spd=1.2,jump=3.6,w=12,h=10,sh=12,ic={0,32,16,12},
    info={"breathes fire! monsters","can't touch the fire.","x: breathe fire"}},
-  {name="unicorn",spd=1.3,jump=3.6,w=12,h=12,sh=16,
+  {name="unicorn",spd=1.3,jump=3.6,w=12,h=12,sh=16,ic={16,32,16,16},
    info={"shoots rainbows! monsters","can't touch rainbows.","x: rainbow (up+x aims up)"}},
-  {name="snail",spd=0.8,jump=2.9,w=10,h=7,sh=8,
+  {name="snail",spd=0.8,jump=2.9,w=10,h=7,sh=8,ic={32,32,12,8},
    info={"sticks to walls+ceilings","x: hide in shell (safe!)","if stuck, you fall off"}},
-  {name="penguin",spd=1.1,jump=3.2,w=8,h=11,sh=11,
+  {name="penguin",spd=1.1,jump=3.2,w=8,h=11,sh=11,ic={64,32,9,11},
    info={"swims in water!","x on ice: belly slide,","it knocks out monsters"}},
-  {name="gorilla",spd=1.2,jump=3.5,w=8,h=17,sh=19,
+  {name="gorilla",spd=1.2,jump=3.5,w=8,h=15,sh=19,ic={48,88,14,19,true},
    info={"big and strong!","x: punch! knocks out","monsters + smashes stone"}},
+  {name="eagle",spd=1.5,jump=3.2,w=6,h=9,sh=10,ic={102,1,7,10,true},
+   info={"flies! hold x to flap","up, let go to glide.","watch out for the bats!"}},
+  {name="fox",spd=1.4,jump=3.6,w=10,h=8,sh=11,ic={97,18,15,11,true},
+   info={"digs tunnels! hold x and","down, left/right, or up.","water floods the tunnel!"}},
  }
+ cartdata("superanimals2_andy")
  -- who picked what. p1 is yellow,
  -- p2 is pink
  pcol={10,14}
@@ -35,14 +43,13 @@ end
 -->8
 -- level
 
+-- the ground starts at row gr
+gr=9
 level={
  "................................................................................................",
- "................................................................................................",
- "................................................................................................",
- "................................................................................................",
- "................................................................................................",
- "................................................................................................",
- "................................................................................................",
+ "............b.................b...........................b.......................b.............",
+ "............................................b.........................b.........................",
+ "......................b.........................................b.......................b.......",
  ".....................................b..............m.....b.....................................",
  ".................###......b......................sssssss................b.......................",
  ".................................................sssssss..........................sssssss.......",
@@ -50,7 +57,10 @@ level={
  "..P.....s..m..s...m.....m....m...............c.sssssssss.......m................c.....m....sss..",
  "####################iiiiiiiiiii#wwsswwssww##################iiiiii#wwsswwssww###################",
  "################################wwwwwwwwww#########################wwwwwwwwww###################",
- "################################wwwwwwwwww#########################wwwwwwwwww###################",
+ "################################################################################################",
+ "######oooooooo########ooooooo#################oooooooooo########################ooooooooo#######",
+ "######ooooouoo########oooouoo#################ooouooouoo########################ooooouooo#######",
+ "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
 }
 
 function load_level()
@@ -64,6 +74,10 @@ function load_level()
    if ch=="m" then
     add(mons,{kind=1,x=x,y=y,w=8,h=8,vx=-0.4})
     ch="."
+   elseif ch=="u" then
+    -- underground monster
+    add(mons,{kind=1,x=x,y=y,w=8,h=8,vx=-0.4,ug=true})
+    ch="o"
    elseif ch=="b" then
     add(mons,{kind=2,x=x,y=y,ox=x,oy=y,w=8,h=6,t=rnd()})
     ch="."
@@ -84,13 +98,16 @@ end
 
 function tile(c,r)
  if c<0 or c>=mw then return "s" end
- if r<0 or r>14 then return "." end
+ if r<0 then return "." end
+ if r>14 then return "B" end
  return tiles[r][c]
 end
 
 function tile_at(x,y) return tile(flr(x/8),flr(y/8)) end
 
-function is_solid(ch) return ch=="#" or ch=="s" or ch=="i" end
+-- "o" is a dug out hole, "B" is
+-- bedrock nobody can dig
+function is_solid(ch) return ch=="#" or ch=="s" or ch=="i" or ch=="B" end
 function is_water(ch) return ch=="w" end
 
 -- does a box touch any tile that
@@ -156,7 +173,8 @@ function start_game()
   end
   s.rdy=false
  end
- boss={x=-20,y=30,w=16,h=16,stun=0,wait=150}
+ boss={x=-20,y=22,w=16,h=16,stun=0,wait=150}
+ endt=0
  bspd=0.45
  beams={}
  parts={}
@@ -171,7 +189,7 @@ end
 function spawn(p)
  p.x=resx-p.n*10 p.y=resy-p.h
  p.vx=0 p.vy=0 p.stick=nil p.shell=false p.slide=0
- p.bub=false p.fire=false p.ride=nil p.punch=0
+ p.bub=false p.fire=false p.ride=nil p.punch=0 p.digt=0
  p.hurt=90
 end
 
@@ -189,7 +207,7 @@ end
 function float(p)
  p.bub=true p.bt=0
  p.vx=0 p.vy=0 p.stick=nil p.shell=false p.slide=0
- p.fire=false p.ride=nil p.punch=0
+ p.fire=false p.ride=nil p.punch=0 p.digt=0
 end
 
 function lose_life(p)
@@ -255,8 +273,15 @@ function _update()
   if state=="play" then update_mons() end
   if state=="play" then update_beams() end
   if state=="play" then update_boss() end
- elseif btnp(4) or btnp(5) or btnp(4,1) or btnp(5,1) then
-  state="select"
+  if state=="play" and timer%6==0 then flood() end
+ else
+  -- the race is over: freeze for a
+  -- moment so nobody skips the
+  -- finish by accident
+  endt+=1
+  if endt>75 and (btnp(4) or btnp(5) or btnp(4,1) or btnp(5,1)) then
+   state="select"
+  end
  end
 end
 
@@ -330,6 +355,10 @@ function update_player(p)
  if overlap(p,{x=gem.x,y=gem.y-12,w=12,h=21}) then
   state="win" winner=p
   sfx(8)
+  -- best time is kept on the cart
+  best=dget(0)
+  newbest=best==0 or timer<best
+  if newbest then dset(0,timer) best=timer end
   return
  end
  -- left behind off the screen:
@@ -454,15 +483,31 @@ function walk(p,c,dir,wet)
    p.vy=-c.jump sfx(0)
   end
  else
-  if (btnp(4,p.n) or btnp(2,p.n)) and p.ground then
+  -- the fox uses up to dig up, so
+  -- up doesn't jump while digging
+  local flap=c.name=="eagle" and btn(5,p.n)
+  local upj=btnp(2,p.n) and not (c.name=="fox" and btn(5,p.n))
+  if (btnp(4,p.n) or upj) and p.ground then
    p.vy=-c.jump
    sfx(0)
   end
-  if p.vy<0 and not (btn(4,p.n) or btn(2,p.n)) then p.vy+=0.3 end
+  if p.vy<0 and not flap and not (btn(4,p.n) or btn(2,p.n)) then p.vy+=0.3 end
   p.vy=min(p.vy+grav,4)
+  if c.name=="eagle" then
+   -- hold x to flap up, let go to
+   -- glide down slowly
+   if flap then
+    p.vy=max(p.vy-0.5,-1.8)
+   else
+    p.vy=min(p.vy,1)
+   end
+  end
  end
  powers(p,c)
  move(p)
+ -- nobody goes over the top of
+ -- the screen
+ if p.y<0 then p.y=0 p.vy=max(p.vy,0) end
  -- a sliding penguin knocks out
  -- the bad guys
  if p.slide>0 then zap(p) end
@@ -514,6 +559,8 @@ function powers(p,c)
    zap(a)
    smash(a)
   end
+ elseif n=="fox" then
+  dig(p)
  elseif n=="penguin" then
   if btnp(5,p.n) and p.slide<=0 and p.ground
    and tile_at(p.x+p.w/2,p.y+p.h+1)=="i" then
@@ -523,13 +570,81 @@ function powers(p,c)
  end
 end
 
+-- the fox digs dirt. hold x and:
+-- down: the two blocks under him
+-- left/right: a tunnel two blocks
+--  tall in front of him
+-- up + left/right: the same, one
+--  block higher (stairs up: hop
+--  up each step with z)
+-- holes are 2 blocks so everybody
+-- (monsters too) can follow
+function dig(p)
+ local q={}
+ if btn(5,p.n) and p.ground then
+  local fr=flr((p.y+p.h-1)/8)
+  if btn(3,p.n) then
+   for c=flr(p.x/8),flr((p.x+p.w-1)/8) do add(q,{c,fr+1}) end
+  else
+   local dir=btn(0,p.n) and -1 or btn(1,p.n) and 1 or 0
+   if dir!=0 then
+    local c=dir>0 and flr((p.x+p.w+1)/8) or flr((p.x-2)/8)
+    local up=btn(2,p.n) and 1 or 0
+    add(q,{c,fr-up})
+    add(q,{c,fr-1-up})
+    if up>0 then
+     -- head room to hop up the step
+     for c2=flr(p.x/8),flr((p.x+p.w-1)/8) do add(q,{c2,fr-1}) end
+    end
+   end
+  end
+ end
+ local any=false
+ for d in all(q) do
+  if tile(d[1],d[2])=="#" then any=true end
+ end
+ if not any then p.digt=0 return end
+ p.digt+=1
+ if p.digt%3==0 then
+  add(parts,{x=p.x+p.w/2+p.face*5,y=p.y+p.h-2,vx=-p.face*rnd(1.5),vy=-1-rnd(1),
+   c=rnd({4,4,9}),t=8+rnd(6)})
+ end
+ if p.digt>=7 then
+  p.digt=0
+  for d in all(q) do
+   if tile(d[1],d[2])=="#" then
+    tiles[d[2]][d[1]]="o"
+    poof(d[1]*8+4,d[2]*8+4,{4,4,9,5})
+   end
+  end
+  sfx(5)
+ end
+end
+
+-- water runs down and sideways
+-- into any hole it touches
+function flood()
+ local new={}
+ for r=gr,14 do
+  for c=0,mw-1 do
+   if tiles[r][c]=="w" then
+    if r<14 and tiles[r+1][c]=="o" then add(new,{r+1,c}) end
+    if c>0 and tiles[r][c-1]=="o" then add(new,{r,c-1}) end
+    if c<mw-1 and tiles[r][c+1]=="o" then add(new,{r,c+1}) end
+   end
+  end
+ end
+ for n in all(new) do tiles[n[1]][n[2]]="w" end
+ if #new>0 and timer%24==0 then sfx(9) end
+end
+
 -- the gorilla's punch breaks
 -- stone blocks
 function smash(a)
  for tx=flr(a.x/8),flr((a.x+a.w-1)/8) do
   for ty=flr(a.y/8),flr((a.y+a.h-1)/8) do
    if tx>=0 and tx<mw and ty>=0 and ty<=14 and tiles[ty][tx]=="s" then
-    tiles[ty][tx]="."
+    tiles[ty][tx]=ty>=gr and "o" or "."
     poof(tx*8+4,ty*8+4,{5,6,13})
     sfx(3)
    end
@@ -634,7 +749,7 @@ function update_boss()
   return
  end
  if b.stun>0 then b.stun-=1 else b.x+=bspd end
- b.y=36+sin(timer/240)*22
+ b.y=22+sin(timer/240)*16
  for p in all(ps) do
   if not safe(p) and overlap(b,p) then
    lose_life(p)
@@ -681,7 +796,9 @@ function _draw()
  for m in all(mons) do
   local f=flr(t()*4)%2
   if m.kind==1 then
+   if m.ug then pal(2,4) pal(8,9) end
    sspr(80+f*8,32,8,8,m.x,m.y,8,8,m.vx>0)
+   pal()
   else
    sspr(80+f*8,40,8,6,m.x,m.y)
   end
@@ -704,9 +821,11 @@ function _draw()
  if msgt>0 then cprint(msg,24,7) end
  if state=="win" then
   local who=#ps>1 and "p"..(winner.n+1) or "you"
-  box(who.." got the ultra diamond!","time "..flr(timer/30).."s  z: play again")
+  box(who.." got the ultra diamond!",
+   "time "..secs(timer).."   best "..secs(best),
+   newbest and "new best time!" or "","z: play again")
  elseif state=="over" then
-  box(overmsg,"z: try again")
+  box(overmsg,"time "..secs(timer),"","z: try again")
  end
 end
 
@@ -716,7 +835,16 @@ function draw_tiles(cx)
    local ch=tile(c,r)
    local x,y=c*8,r*8
    if ch=="#" then
-    spr(is_solid(tile(c,r-1)) and 129 or 128,x,y)
+    spr(tile(c,r-1)=="." and 128 or 129,x,y)
+   elseif ch=="B" then
+    pal(4,5) pal(9,13) pal(5,1)
+    spr(129,x,y)
+    pal()
+   elseif ch=="o" then
+    -- a dug out hole
+    rectfill(x,y,x+7,y+7,0)
+    if (c*5+r*3)%7==0 then pset(x+2,y+5,2) end
+    if (c*3+r*7)%5==0 then pset(x+5,y+2,2) end
    elseif ch=="s" then spr(130,x,y)
    elseif ch=="i" then spr(131,x,y)
    elseif ch=="w" then
@@ -779,6 +907,20 @@ function draw_player(p)
    local bob=(p.ground and p.vx!=0 and flr(t()*8)%2==0) and 1 or 0
    sspr(64,32,9,11,x-4,y-11-bob,9,11,fl)
   end
+ elseif n=="eagle" then
+  local r=p.face>0
+  sspr(102,1,7,10,r and x-4 or x-3,y-10,7,10,r)
+  if not p.ground then
+   -- flapping wings
+   local w=flr(t()*8)%2==0 and -3 or 1
+   line(x-2,y-5,x-6,y-5+w,7)
+   line(x+2,y-5,x+6,y-5+w,7)
+  end
+ elseif n=="fox" then
+  local r=p.face>0
+  local bob=(p.ground and p.vx!=0 and flr(t()*8)%2==0) and 1 or 0
+  local sh=p.digt>0 and p.digt%2 or 0
+  sspr(97,18,15,11,(r and x-10 or x-5)+sh,y-11-bob,15,11,r)
  elseif n=="gorilla" then
   -- he is drawn facing left
   local r=p.face>0
@@ -826,66 +968,72 @@ function cprint(s,y,c)
  print(s,64-#s*2,y,c)
 end
 
-function box(a,b)
- rectfill(2,48,125,76,1)
- rect(2,48,125,76,7)
- cprint(a,55,7)
- cprint(b,66,6)
+function secs(f)
+ return (flr(f/3)/10).."s"
 end
 
+-- the last line only shows up
+-- once the buttons work again
+function box(a,b,c,d)
+ rectfill(2,40,125,86,1)
+ rect(2,40,125,86,7)
+ cprint(a,46,7)
+ cprint(b,56,10)
+ cprint(c,65,11)
+ if endt>75 then cprint(d,76,6) end
+end
+
+-- draw an animal standing on
+-- x,y (bottom middle), facing right
+function draw_icon(c,x,y)
+ local i=c.ic
+ sspr(i[1],i[2],i[3],i[4],x-i[3]/2,y-i[4],i[3],i[4],i[5])
+end
+
+-- each player spins their own
+-- carousel: the animal in the
+-- middle is the one you get
 function draw_select()
- cprint("super animals 2",4,7)
- cprint("race the boss to the",13,1)
- cprint("ultra diamond!",20,1)
- for i=1,#chars do
-  local x=(i-1)*21+2
-  for s in all(sels) do
-   if s.on and s.i==i then rectfill(x-1,30,x+19,55,7) end
-  end
-  local n=chars[i].name
-  if n=="cheetah" then sspr(10,1,18,16,x+1,36,18,16,true)
-  elseif n=="dragon" then sspr(0,32,16,12,x+1,38)
-  elseif n=="unicorn" then sspr(16,32,16,16,x+1,36)
-  elseif n=="snail" then sspr(32,32,12,8,x+3,44)
-  elseif n=="penguin" then sspr(64,32,9,11,x+5,40)
-  else sspr(48,88,14,19,x+2,34,14,19,true) end
-  -- p1 gets the outer frame, p2
-  -- the inner one
-  for k=1,2 do
-   local s=sels[k]
-   if s.on and s.i==i then
-    local d=k*2-3
-    rect(x-1+d,30+d,x+19-d,55-d,pcol[k])
-    rect(x+d,31+d,x+18-d,54-d,pcol[k])
-   end
-  end
- end
+ cprint("super animals 2",1,7)
+ cprint("race the boss to the diamond!",8,1)
  for k=1,2 do
-  local s,y=sels[k],31+k*29
-  rectfill(0,y-1,127,y+5,1)
+  local s,y=sels[k],k*52-36
+  rectfill(0,y,127,y+6,1)
   if s.on then
    local c=chars[s.i]
-   cprint("p"..k.." "..c.name..(s.rdy and " - ready!" or ""),y,pcol[k])
-   for i=1,3 do cprint(c.info[i],y+2+i*6,1) end
+   cprint("p"..k.." "..c.name..(s.rdy and " - ready!" or ""),y+1,pcol[k])
+   rect(49,y+8,78,y+31,pcol[k])
+   rect(50,y+9,77,y+30,pcol[k])
+   draw_icon(c,64,y+29)
+   if not s.rdy then
+    -- the neighbours, as shadows
+    for i=1,15 do pal(i,1) end
+    draw_icon(chars[(s.i-2)%#chars+1],22,y+29)
+    draw_icon(chars[s.i%#chars+1],106,y+29)
+    pal()
+    print("\139",38,y+17,7)
+    print("\145",83,y+17,7)
+   end
+   for i=1,3 do cprint(c.info[i],y+27+i*6,1) end
   else
-   cprint("p"..k,y,pcol[k])
-   cprint("press z to join",y+12,1)
+   cprint("p"..k,y+1,pcol[k])
+   cprint("press z to join",y+18,1)
   end
  end
- cprint("left/right pick  z: ready",121,7)
+ cprint("left/right pick  z: ready",122,7)
 end
 __gfx__
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000a0aa0a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00700700000aaaaaa000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00077000000a0a0aa000000000000000000000000000000222220000000000000000000000000000222220000000000000000000000000000000000000000000
-0007700000aaaaaaaa00000000000000000000000000000202220000000000000000000000000000202220000000000000000000000000000000000000000000
-00700700000aaaaaa000000000000000000000000000222222220000000000000000000000000222222220000000000000000000000000000000000000000000
-000000000000aaaa0000000000000000000000000000222222220000000000000000000000000222222220000000000000000000000000000000000000000000
-0000000000000aaa0aaaaa0aaaaaaaaaa00000000000222222220000000000000000000000000222222220000000000000000000000000000000000000000000
-0000000000000a0aaa0aaaaa00000000000000000000222222222222222220000000000000000002222222222222220000000000000000000000000000000000
-0000000000000a00a0a0a0aa00000000000000000000222222222222222220000000000022222222222222222222220000000000000000000000000000000000
-0000000000000aa0aaaaaaaa00000000000000000000002222200000000220000000000022222222222200000000220000000000000000000000000000000000
+00000000000a0aa0a000000000000000000000000000000000000000000000000000000000000000000000000000000000000007700000000000000000000000
+00700700000aaaaaa000000000000000000000000000000000000000000000000000000000000000000000000000000000000090700000000000000000000000
+00077000000a0a0aa000000000000000000000000000000222220000000000000000000000000000222220000000000000000007700000000000000000000000
+0007700000aaaaaaaa00000000000000000000000000000202220000000000000000000000000000202220000000000000000007770000000000000000000000
+00700700000aaaaaa000000000000000000000000000222222220000000000000000000000000222222220000000000000000007777000000000000000000000
+000000000000aaaa0000000000000000000000000000222222220000000000000000000000000222222220000000000000000007777700000000000000000000
+0000000000000aaa0aaaaa0aaaaaaaaaa00000000000222222220000000000000000000000000222222220000000000000000009097700000000000000000000
+0000000000000a0aaa0aaaaa00000000000000000000222222222222222220000000000000000002222222222222220000000009090770000000000000000000
+0000000000000a00a0a0a0aa00000000000000000000222222222222222220000000000022222222222222222222220000000009090000000000000000000000
+0000000000000aa0aaaaaaaa00000000000000000000002222200000000220000000000022222222222200000000220000000090909000000000000000000000
 0000000000000a0a00000a0a00000000000000002222222222200000000220000000000000000022222200000000220000000000000000000000000000000000
 0000000000000a0a00000a0a00000000000000002222222222200000000220000000000000000022222200000000220000000000000000000000000000000000
 0000000000000a0a00000a0a00000000000000002200022222200000000220000000000000000022222200000000220000000000000000000000000000000000
@@ -893,17 +1041,17 @@ __gfx__
 0000000000000a0a00000a0a00000000000000002200022222200000000220000000000000000022222200000000220000000000000000000000000000000000
 0000000000000a0a00000a0a00000000000000002200022222200000000000000000000000000022222200000000000000000000000000000000000000000000
 00000000000000000000000000000000000000002200022222200000000000000000000000000022222200000000000000000000000000000000000000000000
-00000000000000000000000000000000000000002200022222200000000000000000000000000022222200000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000022002200000000000000000000000000022002200000000000000000000000000000000000000000000
-0000000000000a0aa0a0000000000000000000000000022002200000000000000000000000000022002200000000000000000000000000000000000000000000
-0000000000000aaaaaa0000000000000000000000000022002200000000000000000000000000022002200000000000000000000000000000000000000000000
-0000000000000a0a0aa0000000000000000000000000022002200000000000000000000000000022002200000000000000000000000000000000000000000000
-000000000000aaaaaaaa000000000000000000000000022002200000000000000000000000000022002200000000000000000000000000000000000000000000
-0000000000000aaaaaa0000000000000000000000000022002200000000000000000000000000022002200000000000000000000000000000000000000000000
-00000000000000aaaa00000000000000000000000000022002200000000000000000000000000022002200000000000000000000000000000000000000000000
-000000000000000aaa0aaaaa0aaaaaaaaaa000000000022002200000000000000000000000000022002200000000000000000000000000000000000000000000
-000000000000000a0aaa0aaaaa000000000000000000022002200000000000000000000000000022002200000000000000000000000000000000000000000000
-000000000aaaaaaa00a0a0a0aaaaaaaaaa0000000000022002200000000000000000000000000022002200000000000000000000000000000000000000000000
+00000000000000000000000000000000000000002200022222200000000000000000000000000022222200000000000000008008000000000000000000000000
+00000000000000000000000000000000000000000000022002200000000000000000000000000022002200000000000000888888000000000000000000000000
+0000000000000a0aa0a0000000000000000000000000022002200000000000000000000000000022002200000000000008808088000000000000000000000000
+0000000000000aaaaaa0000000000000000000000000022002200000000000000000000000000022002200000000000008888888000000000000000000000000
+0000000000000a0a0aa0000000000000000000000000022002200000000000000000000000000022002200000000000000888888888888880000000000000000
+000000000000aaaaaaaa000000000000000000000000022002200000000000000000000000000022002200000000000000888888888800000000000000000000
+0000000000000aaaaaa0000000000000000000000000022002200000000000000000000000000022002200000000000000888888888800000000000000000000
+00000000000000aaaa00000000000000000000000000022002200000000000000000000000000022002200000000000000888888888800000000000000000000
+000000000000000aaa0aaaaa0aaaaaaaaaa000000000022002200000000000000000000000000022002200000000000000808000080800000000000000000000
+000000000000000a0aaa0aaaaa000000000000000000022002200000000000000000000000000022002200000000000000808000080800000000000000000000
+000000000aaaaaaa00a0a0a0aaaaaaaaaa0000000000022002200000000000000000000000000022002200000000000000808000080800000000000000000000
 000000000aaaaaaaa0aaaaaaaaaaaaaaaa0000000000022002200000000000000000000000000022002200000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000022002200000000000000000000000000022002200000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000

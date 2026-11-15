@@ -120,5 +120,10 @@ The kids will find bugs fast; find them first.
   restart EmulationStation. Panel buttons: a = 🅾️ (z), b = ❎ (x),
   start = pause, select+start = quit. See
   https://andyreagan.com/2026-11-09-pico8-on-the-arcade.html.
+- Standing permission from Andy (2026-11-15): in this repo, commit and push
+  without asking after each working change, and always copy the cart to the
+  arcade when it is on (`ssh arcade`; if it is off ssh just won't respond,
+  so skip it and say so). Also copy the cart to the laptop's PICO-8 carts
+  folder so it can be tested there.
 - Public repo: keep the kids' first names out of new carts and copy (Abel is
   already public), unless Andy says otherwise.
