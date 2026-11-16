@@ -8,6 +8,7 @@
  {"slug": "princess-lucille", "title": "Princess Lucille", "year": 2026, "blurb": "Find the doggies on the rainbow platforms. Zap Maldrid the evil wizard with your wand and hide in your pink tent.", "controls": "arrows move, z jumps, x waves the wand"},
  {"slug": "rainbow-unicorn", "title": "Rainbow Unicorn", "year": 2026, "blurb": "Hop the rainbow blocks, grab the coins, and hide from the robber in your fort.", "controls": "arrows move, z jumps, x throws a star"},
  {"slug": "apple-guy", "title": "Apple Guy vs the Duck", "year": 2026, "blurb": "Jump the platforms, catch the diamond robots, and throw poison apples at the duck.", "controls": "arrows move, z jumps, x throws an apple, down drops through"},
+ {"slug": "abels-moving-guy", "title": "Abel's Moving Guy", "year": 2025, "blurb": "A very early one from Abel: a guy he drew that walks around the screen.", "controls": "arrows move"},
  {"slug": "animal-power", "title": "Animal Power", "year": 2025, "blurb": "One of our first games, from before Claude: I wrote the code from YouTube tutorials and the kids did the art."},
  {"slug": "cat-mario", "title": "Cat Mario", "year": 2025, "blurb": "Another early one from 2025."},
  {"slug": "save-the-children", "title": "Save the Children", "year": 2025, "blurb": "Another early one from 2025."},

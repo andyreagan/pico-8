@@ -125,5 +125,14 @@ The kids will find bugs fast; find them first.
   arcade when it is on (`ssh arcade`; if it is off ssh just won't respond,
   so skip it and say so). Also copy the cart to the laptop's PICO-8 carts
   folder so it can be tested there.
+- Names: on the laptop and the arcade a cart's file name is the repo slug
+  with spaces instead of dashes (`super-animals-2` → `super animals 2.p8`).
+  The arcade holds exactly the playable games in `games.json`, with the
+  same titles in its game list. Never put a cart without code on the
+  arcade: it crashes with no way out. Drawing-only carts (the sketches)
+  stay on the laptop only, out of the repo.
+- Restarting EmulationStation without it overwriting the game list: check no
+  game is running, write the list, `touch /tmp/es-restart`, then `kill -9`
+  the `emulationstation` binary (the wrapper script relaunches it).
 - Public repo: keep the kids' first names out of new carts and copy (Abel is
   already public), unless Andy says otherwise.
