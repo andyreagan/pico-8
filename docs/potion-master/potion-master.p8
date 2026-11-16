@@ -1,0 +1,736 @@
+pico-8 cartridge // http://www.pico-8.com
+version 42
+__lua__
+-- potion master
+-- go around and find 11
+-- ingredients for your potion.
+-- find money and go to the store
+-- for the ones you can't find.
+-- when you have all 11, press x:
+-- the potion makes something
+-- that helps you... or it makes
+-- evil spirits!
+
+function _init()
+ ww=512 wh=384
+ names={"mushroom","flower","berries","frog",
+  "feather","star","egg","leaf","crystal",
+  "carrot","acorn"}
+ store={x=398,y=246,w=23,h=19}
+ road={}
+ addroad({{-8,70},{60,70},{140,58},{210,90},
+  {250,150},{270,220},{330,276},{409,276}})
+ addroad({{250,150},{320,122},{400,112},
+  {460,62},{520,50}})
+ addroad({{270,220},{220,282},{150,300},
+  {90,350},{60,392}})
+ trees={}
+ srand(11)
+ local tries=0
+ while #trees<46 and tries<2000 do
+  tries+=1
+  local t={x=flr(rnd(ww-16)),y=10+flr(rnd(wh-28))}
+  local ok=not near_road(t.x+8,t.y+14,17)
+   and not (t.x>store.x-30 and t.x<store.x+40
+    and t.y>store.y-30 and t.y<store.y+40)
+  for o in all(trees) do
+   if abs(o.x-t.x)<18 and abs(o.y-t.y)<14 then ok=false end
+  end
+  if ok then add(trees,t) end
+ end
+ srand(t()*1000+stat(95)+stat(94)*60)
+ state="title"
+ msg="" msgt=0
+end
+
+-- smooth the corners, then drop
+-- a dot every few pixels
+function addroad(p)
+ for n=1,3 do
+  local q={p[1]}
+  for i=1,#p-1 do
+   local a,b=p[i],p[i+1]
+   add(q,{a[1]*0.75+b[1]*0.25,a[2]*0.75+b[2]*0.25})
+   add(q,{a[1]*0.25+b[1]*0.75,a[2]*0.25+b[2]*0.75})
+  end
+  add(q,p[#p])
+  p=q
+ end
+ for i=1,#p-1 do
+  local a,b=p[i],p[i+1]
+  local dx,dy=b[1]-a[1],b[2]-a[2]
+  local n=max(1,flr(max(abs(dx),abs(dy))/3))
+  for k=0,n-1 do
+   add(road,{x=a[1]+dx*k/n,y=a[2]+dy*k/n})
+  end
+ end
+end
+
+function near_road(x,y,d)
+ for r in all(road) do
+  if abs(r.x-x)<d and abs(r.y-y)<d then return true end
+ end
+ return false
+end
+
+function new_game()
+ lives=3
+ coins=0
+ potions=0
+ bad=0
+ boots=false compass=false magnet=false
+ spirits={}
+ pl={x=20,y=56,face=1,hurt=0,walk=0}
+ new_round()
+ state="play"
+ say("find 11 ingredients!",90)
+end
+
+-- 8 ingredients are out in the
+-- world, 3 are only at the store
+function new_round()
+ have={}
+ cnt=0
+ items={}
+ stock={}
+ local order={}
+ for i=1,11 do add(order,i) end
+ for i=11,2,-1 do
+  local j=flr(rnd(i))+1
+  order[i],order[j]=order[j],order[i]
+ end
+ for i=1,11 do
+  if i<=3 then add(stock,order[i])
+  else place({k=order[i]}) end
+ end
+ for i=1,10 do place({k=0}) end
+end
+
+function place(it)
+ for tries=1,60 do
+  it.x=12+flr(rnd(ww-24))
+  it.y=22+flr(rnd(wh-36))
+  local ok=abs(it.x-pl.x)+abs(it.y-pl.y)>50
+  if it.x>store.x-16 and it.x<store.x+40
+   and it.y>store.y-16 and it.y<store.y+36 then ok=false end
+  for o in all(items) do
+   if abs(o.x-it.x)<20 and abs(o.y-it.y)<20 then ok=false end
+  end
+  for t in all(trees) do
+   if it.x>t.x-6 and it.x<t.x+22
+    and it.y>t.y-6 and it.y<t.y+20 then ok=false end
+  end
+  if ok then break end
+ end
+ it.ph=rnd()
+ add(items,it)
+end
+
+function say(s,n)
+ msg=s msgt=n or 75
+end
+
+-->8
+-- update
+
+function _update()
+ if msgt>0 then msgt-=1 end
+ if state=="play" then
+  update_player()
+  update_items()
+  update_spirits()
+ elseif state=="brew" then
+  brewt-=1
+  if brewt<=0 then finish_potion() end
+ elseif btnp(4) then
+  new_game()
+ end
+end
+
+function at_store()
+ local cx,cy=pl.x+6,pl.y+10
+ return cx>store.x-8 and cx<store.x+store.w+8
+  and cy>store.y-6 and cy<store.y+store.h+12
+end
+
+function update_player()
+ local p=pl
+ if p.hurt>0 then p.hurt-=1 end
+ local sp=boots and 1.6 or 1
+ local dx,dy=0,0
+ if btn(0) then dx=-1 p.face=-1 end
+ if btn(1) then dx=1 p.face=1 end
+ if btn(2) then dy=-1 end
+ if btn(3) then dy=1 end
+ if dx!=0 and dy!=0 then sp*=0.75 end
+ p.x=mid(0,p.x+dx*sp,ww-13)
+ p.y=mid(10,p.y+dy*sp,wh-16)
+ if dx!=0 or dy!=0 then p.walk+=1 else p.walk=0 end
+ if btnp(5) then
+  if cnt>=11 then
+   state="brew"
+   brewt=75
+   sfx(2)
+  else
+   say("you have "..cnt.." of 11 ingredients")
+   sfx(7)
+  end
+ end
+ if btnp(4) and at_store() then
+  if #stock==0 then
+   say("the store is sold out")
+   sfx(7)
+  elseif coins<3 then
+   say("you need 3 coins")
+   sfx(7)
+  else
+   coins-=3
+   local k=stock[1]
+   deli(stock,1)
+   got(k)
+   sfx(6)
+  end
+ end
+end
+
+function got(k)
+ have[k]=true
+ cnt+=1
+ if cnt>=11 then
+  say("all 11! press x for a potion",150)
+ else
+  say(names[k].."! "..cnt.." of 11")
+ end
+end
+
+function update_items()
+ local cx,cy=pl.x+6,pl.y+9
+ for i=#items,1,-1 do
+  local it=items[i]
+  local dx,dy=cx-it.x-4,cy-it.y-4
+  local d=max(abs(dx),abs(dy))
+  if magnet and d<30 and d>1 then
+   it.x+=sgn(dx)*min(1.5,abs(dx))
+   it.y+=sgn(dy)*min(1.5,abs(dy))
+  end
+  if d<9 then
+   deli(items,i)
+   if it.k==0 then
+    coins+=1
+    sfx(1)
+   else
+    got(it.k)
+    sfx(0)
+   end
+  end
+ end
+end
+
+function update_spirits()
+ for i=#spirits,1,-1 do
+  local s=spirits[i]
+  s.t-=1
+  local dx,dy=pl.x-s.x,pl.y+2-s.y
+  local d=sqrt(dx*dx+dy*dy)
+  if d>1 then
+   s.x+=dx/d*s.spd
+   s.y+=dy/d*s.spd
+  end
+  if s.t<=0 then
+   deli(spirits,i)
+  elseif pl.hurt==0 and s.t<570 and d<9 then
+   lives-=1
+   pl.hurt=75
+   sfx(5)
+   if lives<=0 then
+    state="over"
+    msgt=0
+    return
+   end
+   say("an evil spirit got you!")
+  end
+ end
+end
+
+function finish_potion()
+ potions+=1
+ if potions>=5 then
+  state="win"
+  msgt=0
+  sfx(8)
+  return
+ end
+ state="play"
+ if potions>1 and rnd()<0.4 then
+  bad+=1
+  for i=1,min(4,bad+1) do
+   local a=rnd()
+   add(spirits,{x=pl.x+cos(a)*70,y=pl.y+sin(a)*70,
+    t=600,spd=min(0.8,0.5+potions*0.05)})
+  end
+  say("oh no! evil spirits! run!",120)
+  sfx(4)
+ else
+  local opts={}
+  if not compass then add(opts,1) end
+  if not magnet then add(opts,2) end
+  if not boots then add(opts,3) end
+  add(opts,4)
+  add(opts,5)
+  local o=rnd(opts)
+  if o==1 then
+   compass=true
+   say("a compass! it points the way",150)
+  elseif o==2 then
+   magnet=true
+   say("a magnet! things fly to you",150)
+  elseif o==3 then
+   boots=true
+   say("fast boots! you run faster",150)
+  elseif o==4 then
+   lives=min(5,lives+1)
+   say("an extra heart!",150)
+  else
+   coins+=4
+   say("4 coins!",150)
+  end
+  sfx(3)
+ end
+ new_round()
+end
+
+-->8
+-- draw
+
+function _draw()
+ if state=="title" then draw_title() return end
+ local camx=mid(0,pl.x+6-64,ww-128)
+ local camy=mid(0,pl.y+8-68,wh-128)
+ cls(11)
+ camera(camx,camy)
+ for r in all(road) do
+  if abs(r.x-camx-64)<73 and abs(r.y-camy-64)<73 then
+   circfill(r.x,r.y,7,5)
+  end
+ end
+ sspr(74,11,23,19,store.x,store.y)
+ local feet=pl.y+16
+ for t in all(trees) do
+  if t.y+16<=feet then sspr(104,16,16,16,t.x,t.y) end
+ end
+ for it in all(items) do
+  local b=sin(t()+it.ph)>0.5 and 1 or 0
+  icon(it.k,it.x,it.y-b)
+ end
+ draw_wizard()
+ for t in all(trees) do
+  if t.y+16>feet then sspr(104,16,16,16,t.x,t.y) end
+ end
+ for s in all(spirits) do
+  -- they fade in and out
+  if (s.t>570 or s.t<60) and s.t%4<2 then
+  else
+   sspr(104,0,12,13,s.x,s.y+sin(t()+s.x/50)*1.5,12,13,pl.x<s.x)
+  end
+ end
+ if state=="brew" then draw_brew() end
+ camera()
+ draw_hud()
+ if state=="play" and at_store() then draw_shop() end
+ if msgt>0 then ctext(msg,98) end
+ if state=="over" then box("the spirits got you!","z: try again") end
+ if state=="win" then box("you are the potion master!","z: play again") end
+end
+
+-- 0 coin, 1-11 ingredients,
+-- 12 boots, 13 compass, 14 magnet
+function icon(k,x,y)
+ if k==0 then sspr(16,24,8,8,x,y)
+ elseif k<=9 then sspr((k-1)*8,16,8,8,x,y)
+ elseif k<=11 then sspr((k-10)*8,24,8,8,x,y)
+ else sspr((k-9)*8,24,8,8,x,y) end
+end
+
+function draw_wizard()
+ local p=pl
+ if p.hurt>0 and p.hurt%4<2 then return end
+ local bob=p.walk%8>=4 and 1 or 0
+ sspr(10,0,13,16,p.x,p.y-bob,13,16,p.face<0)
+ if compass and state=="play" then
+  local best,bd
+  for it in all(items) do
+   if it.k>0 then
+    local d=abs(it.x-p.x)+abs(it.y-p.y)
+    if not bd or d<bd then bd=d best=it end
+   end
+  end
+  if best and bd>24 then
+   local dx,dy=best.x+4-p.x-6,best.y+4-p.y-8
+   local d=sqrt((dx/16)^2+(dy/16)^2)*16
+   dx/=d dy/=d
+   local cx,cy=p.x+6,p.y+8
+   line(cx+dx*12,cy+dy*12,cx+dx*17,cy+dy*17,7)
+   circfill(cx+dx*18,cy+dy*18,1,8)
+  end
+ end
+end
+
+function draw_brew()
+ local x=pl.x+(pl.face>0 and 15 or -11)
+ local y=pl.y+8
+ for i=0,5 do
+  local a=(t()*1.5+i/6)%1
+  circfill(x+1+(i*5)%8,y-a*14,1+(i%2),({12,14,10,11,8,13})[i+1])
+ end
+ sspr(43,8,9,8,x,y)
+ ctext2("making a potion...",pl.x+6,pl.y-12)
+end
+
+function draw_hud()
+ rectfill(0,0,127,8,0)
+ for i=1,11 do
+  if not have[i] then
+   for c=1,15 do pal(c,1) end
+  end
+  icon(i,(i-1)*8,0)
+  pal()
+ end
+ icon(0,90,0)
+ print(coins,99,2,10)
+ print("\135"..lives,112,2,8)
+ shadow("potion "..potions.."/5",1,121,7)
+ local x=119
+ if boots then icon(12,x,119) x-=9 end
+ if compass then icon(13,x,119) x-=9 end
+ if magnet then icon(14,x,119) end
+end
+
+function draw_shop()
+ rectfill(8,104,119,117,1)
+ rect(8,104,119,117,7)
+ if #stock==0 then
+  print("store: sold out!",12,108,7)
+ else
+  for i=1,#stock do icon(stock[i],2+i*9,105) end
+  icon(0,44,105)
+  print("3 each   z: buy",53,108,7)
+ end
+end
+
+function shadow(s,x,y,c)
+ print(s,x+1,y+1,1)
+ print(s,x,y,c)
+end
+
+function ctext(s,y)
+ shadow(s,64-#s*2,y,7)
+end
+
+function ctext2(s,x,y)
+ shadow(s,x-#s*2,y,7)
+end
+
+function box(a,b)
+ rectfill(8,48,119,76,1)
+ rect(8,48,119,76,7)
+ print(a,64-#a*2,55,7)
+ print(b,64-#b*2,66,10)
+end
+
+function draw_title()
+ cls(11)
+ shadow("potion master",38,8,7)
+ sspr(10,0,13,16,20,24,26,32)
+ sspr(43,8,9,8,56,38,18,16)
+ for i=0,3 do
+  circfill(60+i*4,34-(t()*8+i*5)%14,1+i%2,({12,14,10,8})[i+1])
+ end
+ sspr(74,11,23,19,90,34)
+ for i=1,11 do icon(i,(i-1)*11+5,62) end
+ ctext("find all 11 ingredients, then",76)
+ ctext("press x to make a potion!",83)
+ ctext("it makes something to help you",93)
+ ctext("...or it makes evil spirits!",100)
+ sspr(104,0,12,13,10,5)
+ sspr(104,0,12,13,106,5,12,13,true)
+ ctext("arrows walk  x potion  z buy",112)
+ ctext("press z to start",120)
+end
+__gfx__
+000000000000000555000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000dddd0000000000000000
+0000000000000055555000000000000000000000000000000000000000000000000000000000000000000000000000000000000000dddddddd00000000000000
+007007000000055555550000000000000000000000000000000000000000000000000000000000000000000000000000000000000dddddddddd0000000000000
+0007700000000f4ff4ff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000dddddddddd0000000000000
+0007700000000fffffff000000000000000000000000000000000000000000000000000000000000000000000000000000000000dd88dddd88dd000000000000
+00700700000666666666600000000000000000000000000000000000000000000000000000000000000000000000000000000000dd88dddd88dd000000000000
+00000000000666565666600000000000000000000000000000000000000000000000000000000000000000000000000000000000dddddddddddd000000000000
+00000000000066555660000000000000000000000000000000000000000000000000000000000000000000000000000000000000ddd111111ddd000000000000
+00000000000006666650000000000000000000000005555555550000000000000000000000000000000000000000000000000000dddd1111dddd000000000000
+00000000000000666a50000000000000000000000005555555550000000000000000000000000000000000000000000000000000dddddddddddd000000000000
+0000000000f55556a25555f000000000000000000005555555550000000000000000000000000000000000000000000000000000dddddddddddd000000000000
+0000000000000052aa50000000000000000000000005555555550000000000000000000000888888888888888888888880000000dd0ddd0ddd0d000000000000
+000000000000005aa250000000000000000000000005555555550000000000000000000000888888888888888888888880000000d000d000d000000000000000
+0000000000000552a255000000000000000000000000555555500000000000000000000000888888888888888888888880000000000000000000000000000000
+000000000000555a2a55500000000000000000000000055555000000000000000000000000888888888888888888888880000000000000000000000000000000
+00000000000555522255550000000000000000000000500000500000000000000000000000888888888888888888888880000000000000000000000000000000
+0088880000e00e00000303000000000000000077000a00000077700000009900000c000000777777777777777778777770000000000003333000000000000000
+087888800eeaaee00000300003000300000077c7000a0000077777000099990000c7c00000777777777788888778887770000000000333333330000000000000
+888887880eeaaee00cc03cc0373037300007c770aaaaaaa00777f700099499900c77cc0000778887787787788778777770000000003333333333000000000000
+8878888800e00e00c7ccc7cc33333333007c77000aa9aa0077777770094999900c7ccc0000778777888787778778788870000000033333333333300000000000
+0077770000030000cccccccc3833338307c7700000aaa00077f77770949999900cccc10000778887787787778778787870000000033333333333300000000000
+007ff700003300000cc00cc003333330077700000aa0aa00777777700999900000cc100000777787787787778778788870000000033333333333330000000000
+00777700000303000000000033033033500000000a000a0007777700400000000001000000777787787787778778787770000000333333333333330000000000
+00000000000330000000000000000000000000000000000000777000000000000000000000778887787788888778787770000000333333333333330000000000
+000003300004000000aaaa0004400000006666007700007700000000000000000000000000777777777777777777788770000000033333333333300000000000
+00003300044444000aa99aa004400000067787607700007700000000000000000000000000777777777777777777777770000000003333333333000000000000
+0009900044444440aa9aaaaa04400000677887768800008800000000000000000000000000777777777777777777777770000000000033443300000000000000
+0099900009f99900aa9aaaaa04400000677877768800008800000000000000000000000000777777777777777777777770000000000004444000000000000000
+0094000009999900aa9aaaaa044400006771c7768880088800000000000000000000000000777777777777777777777770000000000004444000000000000000
+0990000009999900aa9aaaaa04444400677c17760888888000000000000000000000000000777777777777777777777770000000000004444000000000000000
+09000000009990000aa99aa004444440067c77600088880000000000000000000000000000000000000000000000000000000000000004444000000000000000
+000000000009000000aaaa0005555550006666000000000000000000000000000000000000000000000000000000000000000000000044444400000000000000
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb555555555555555555bbbbbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+555555555555555555555555555555555555555555555555555bbbbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+55555555555555555555555555555555555555555555555555555bbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbb55555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555bbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbb55555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555bbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbb55555555555555555555555555555555
+5555555555555555555555555555555555555555555555555555555bbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbb55555555555555555555555555555555
+5555555555555555555555555555555555555555555555555555555bbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbb55555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555bbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbb55555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555bbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbb55555555555555555555555555555555
+555555555555555555555555555555555555555555555555555555555bbbbbbbbbbbbbbbbb5555555555555bbbbbbbbb55555555555555555555555555555555
+5555555555555555555555555555555555555555555555555555555555bbbbbbbbbbbbbbbb5555555555555bbbbbbbbb55555555555555555555555555555555
+5555555555555555555555555555555555555555555555555555555555bbbbbbbbbbbbbbbb5555555555555bbbbbbbbb55555555555555555555555555555555
+55555555555555555555555555555555bbbbb5555555555555555555555bbbbbbbbbbbbbbb5555555555555bbbbbbbbb55555555555555555555555555555555
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5555555555555555555555bbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb555555555555555555bbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb555555555555555bbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb555555555555555bbbbbbbbbbbbbb55555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb55555555555555bbbbbbbbbbbbbb55555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbb55555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbb55555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5555555555555bbbbbbbbbbbbbb55555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb17271525354515253545bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1626364616263646bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1727374717273747bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1424344414243444bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+00000000555555555555555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1525354515253545bbbbbbbbbbbb55555555555555555555555555555555
+00000000555555555555555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb55555555555555555555555555555555
+00000000555555555555555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1626364616263646bbbbbbbbbbbb55555555555555555555555555555555
+00000000555555555555555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb55555555555555555555555555555555
+00000000555555555555555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1727374717273747bbbbbbbbbbbb55555555555555555555555555555555
+00000000555555555555555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb55555555555555555555555555555555
+00000000555555555555555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1424344414243444142434441424344414243444555555555555
+00000000555555555555555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb55555555555555555555555555555555
+00000000555555bbbb55555555555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1525354515253545152535451525354515253545555555555555
+00000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+00000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1626364616263646162636461626364616263646bbbbbbbbbbbb
+00000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+00000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1727374717273747172737471727374717273747bbbbbbbbbbbb
+00000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+00000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+00000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+00000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+00000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+00000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+00000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+00000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+00000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+00000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+00000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+0000000000000000000000000000000000000000000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+0000000000000000000000000000000000000000000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+0000000000000000000000000000000000000000000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+0000000000000000000000000000000000000000000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+0000000000000000000000000000000000000000000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+0000000000000000000000000000000000000000000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+0000000000000000000000000000000000000000000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+0000000000000000000000000000000000000000000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+__label__
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbddddbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbddddbbbbbbbbbbbbbb
+bbbbbbbbbbbbddddddddbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbddddddddbbbbbbbbbbbb
+bbbbbbbbbbbddddddddddbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbddddddddddbbbbbbbbbbb
+bbbbbbbbbbbddddddddddbbbbbbbbbbbbbbbbb777bb77b777b777bb77b77bbbbbb777b777bb77b777b777b777bbbbbbbbbbbbbbbbbbddddddddddbbbbbbbbbbb
+bbbbbbbbbbdd88dddd88ddbbbbbbbbbbbbbbbb71717b71b711b7117b71717bbbbb777171717b11b71171117171bbbbbbbbbbbbbbbbdd88dddd88ddbbbbbbbbbb
+bbbbbbbbbbdd88dddd88ddbbbbbbbbbbbbbbbb77717171b71bb71b71717171bbbb71717771777bb71b77bb77b1bbbbbbbbbbbbbbbbdd88dddd88ddbbbbbbbbbb
+bbbbbbbbbbddddddddddddbbbbbbbbbbbbbbbb71117171b71bb71b71717171bbbb71717171b171b71b711b717bbbbbbbbbbbbbbbbbddddddddddddbbbbbbbbbb
+bbbbbbbbbbddd111111dddbbbbbbbbbbbbbbbb71bb77b1b71b777b77b17171bbbb7171717177b1b71b777b7171bbbbbbbbbbbbbbbbddd111111dddbbbbbbbbbb
+bbbbbbbbbbdddd1111ddddbbbbbbbbbbbbbbbbb1bbb11bbb1bb111b11bb1b1bbbbb1b1b1b1b11bbb1bb111b1b1bbbbbbbbbbbbbbbbdddd1111ddddbbbbbbbbbb
+bbbbbbbbbbddddddddddddbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbddddddddddddbbbbbbbbbb
+bbbbbbbbbbddddddddddddbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbddddddddddddbbbbbbbbbb
+bbbbbbbbbbddbdddbdddbdbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbdbdddbdddbddbbbbbbbbbb
+bbbbbbbbbbdbbbdbbbdbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbdbbbdbbbdbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbb5555555555bbbbbbbbbbbbbbbbbbbbbbbbbeeebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbb5555555555bbbbbbbbbbbbbbbbbbbbbbbbeeeeebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbb55555555555555bbbbbbbbbbbbbbbbbbbbbbeeeeebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbb55555555555555bbbbbbbbbbbbbbbbbbbbbbeeeeebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbff44ffff44ffffbbbbbbbbbbbbbbbbbbbbbbbeeebbbbb888bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbff44ffff44ffffbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb88888bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbffffffffffffffbbbbbbbbbbbbbbbbbbbbcbbbbbbbbb88888bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbffffffffffffffbbbbbbbbbbbbbbbbbbbcccbbbbbbbb88888bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbb66666666666666666666bbbbbbbbbbbbbbbbbbcbbbbbbbbbb888bbbbbbbbbbbbbbbb88888888888888888888888bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbb66666666666666666666bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb88888888888888888888888bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbb66666655665566666666bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb88888888888888888888888bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbb66666655665566666666bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb88888888888888888888888bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbb66665555556666bbbbbbbbbbbbbbbbbb555555555555555555bbbbbbbbbbbbbbbb88888888888888888888888bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbb66665555556666bbbbbbbbbbbbbbbbbb555555555555555555bbbbbbbbbbbbbbbb77777777777777777877777bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbb666666666655bbbbbbbbbbbbbbbbbb555555555555555555bbbbbbbbbbbbbbbb77777777778888877888777bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbb666666666655bbbbbbbbbbbbbbbbbb555555555555555555bbbbbbbbbbbbbbbb77888778778778877877777bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbb666666aa55bbbbbbbbbbbbbbbbbb555555555555555555bbbbbbbbbbbbbbbb77877788878777877878887bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbb666666aa55bbbbbbbbbbbbbbbbbb555555555555555555bbbbbbbbbbbbbbbb77888778778777877878787bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbff5555555566aa2255555555ffbbbbbbbbbb555555555555555555bbbbbbbbbbbbbbbb77778778778777877878887bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbff5555555566aa2255555555ffbbbbbbbbbb555555555555555555bbbbbbbbbbbbbbbb77778778778777877878777bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbb5522aaaa55bbbbbbbbbbbbbbbbbb555555555555555555bbbbbbbbbbbbbbbb77888778778888877878777bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbb5522aaaa55bbbbbbbbbbbbbbbbbb555555555555555555bbbbbbbbbbbbbbbb77777777777777777778877bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbb55aaaa2255bbbbbbbbbbbbbbbbbbbb55555555555555bbbbbbbbbbbbbbbbbb77777777777777777777777bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbb55aaaa2255bbbbbbbbbbbbbbbbbbbb55555555555555bbbbbbbbbbbbbbbbbb77777777777777777777777bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbb555522aa225555bbbbbbbbbbbbbbbbbbbb5555555555bbbbbbbbbbbbbbbbbbbb77777777777777777777777bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbb555522aa225555bbbbbbbbbbbbbbbbbbbb5555555555bbbbbbbbbbbbbbbbbbbb77777777777777777777777bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbb555555aa22aa555555bbbbbbbbbbbbbbbb55bbbbbbbbbb55bbbbbbbbbbbbbbbbbb77777777777777777777777bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbb555555aa22aa555555bbbbbbbbbbbbbbbb55bbbbbbbbbb55bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbb5555555522222255555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbb5555555522222255555555bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbb8888bbbbbbbebbebbbbbbbb3b3bbbbbbbbbbbbbbbbbbbbbb77bbbbbbabbbbbbbbb777bbbbbbbbbb99bbbbbbbbcbbbbbbbbbbbb33bbbbbbb4bbbbbbbbb
+bbbbbb878888bbbbbeeaaeebbbbbbbb3bbbbbbb3bbb3bbbbbbbbb77c7bbbbbbabbbbbbbb77777bbbbbbb9999bbbbbbbc7cbbbbbbbbbb33bbbbbb44444bbbbbbb
+bbbbb88888788bbbbeeaaeebbbbbccb3ccbbbb373b373bbbbbbb7c77bbbbaaaaaaabbbbb777f7bbbbbb994999bbbbbc77ccbbbbbbbb99bbbbbb4444444bbbbbb
+bbbbb88788888bbbbbebbebbbbbc7ccc7ccbbb33333333bbbbb7c77bbbbbbaa9aabbbbb7777777bbbbb949999bbbbbc7cccbbbbbbb999bbbbbbb9f999bbbbbbb
+bbbbbbb7777bbbbbbbb3bbbbbbbccccccccbbb38333383bbbb7c77bbbbbbbbaaabbbbbb77f7777bbbb9499999bbbbbcccc1bbbbbbb94bbbbbbbb99999bbbbbbb
+bbbbbbb7ff7bbbbbbb33bbbbbbbbccbbccbbbbb333333bbbbb777bbbbbbbbaabaabbbbb7777777bbbbb9999bbbbbbbbcc1bbbbbbb99bbbbbbbbb99999bbbbbbb
+bbbbbbb7777bbbbbbbb3b3bbbbbbbbbbbbbbbb33b33b33bbb5bbbbbbbbbbbabbbabbbbbb77777bbbbb4bbbbbbbbbbbbb1bbbbbbbb9bbbbbbbbbbb999bbbbbbbb
+bbbbbbbbbbbbbbbbbbb33bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb777bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb9bbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbb777b777b77bb77bbbbbb777b7bbb7bbbbbbb77bb77bbbbbb777b77bbb77b777b777b77bb777b777b77bb777bb77bbbbbbbbb777b7b7b777b77bbbbbbbb
+bbbbbb7111b711717b717bbbbb717171bb71bbbbbbb71bb71bbbbbb711717b7b1171717111717bb7117111717bb7117b11bbbbbbbbb71171717111717bbbbbbb
+bbbbbb77bbb71b71717171bbbb777171bb71bbbbbbb71bb71bbbbbb71b717171bb77b177bb7171b71b77bb7171b71b777bbbbbbbbbb71b777177bb7171bbbbbb
+bbbbbb711bb71b71717171bbbb717171bb71bbbbbbb71bb71bbbbbb71b7171717b717b711b7171b71b711b7171b71bb171b7bbbbbbb71b7171711b7171bbbbbb
+bbbbbb71bb777b71717771bbbb7171777b777bbbbb777b777bbbbb777b717177717171777b7771777b777b7171b71b77b17b1bbbbbb71b7171777b7171bbbbbb
+bbbbbbb1bbb111b1b1b111bbbbb1b1b111b111bbbbb111b111bbbbb111b1b1b111b1b1b111b111b111b111b1b1bb1bb11bb1bbbbbbbb1bb1b1b111b1b1bbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbb777b777b777bb77bb77bbbbb7b7bbbbb777bb77bbbbb777b777b7b7b777bbbbb777bbbbb777bb77b777b777bb77b77bbb7bbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbb7171717171117b117b11bbbb7171bbbbb7117b71bbbb7771717171717111bbbb7171bbbb71717b71b711b7117b71717bb71bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbb777177b177bb777b777bbbbbb7b1bbbbb71b7171bbbb7171777177b177bbbbbb7771bbbb77717171b71bb71b71717171b71bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbb7111717b711bb171b171bbbb7b7bbbbbb71b7171bbbb71717171717b711bbbbb7171bbbb71117171b71bb71b71717171bb1bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbb71bb7171777b77b177b1bbbb7171bbbbb71b77b1bbbb717171717171777bbbbb7171bbbb71bb77b1b71b777b77b17171b7bbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbb1bbb1b1b111b11bb11bbbbbb1b1bbbbbb1bb11bbbbbb1b1b1b1b1b1b111bbbbb1b1bbbbb1bbb11bbb1bb111b11bb1b1bb1bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbb777b777bbbbb777b777b7b7b777bb77bbbbbb77bb77b777b777b777b7b7b777b77bbb77bbbbb777bb77bbbbb7b7b777b7bbb777bbbbb7b7bb77b7b7bbbbb
+bbbbb711b711bbbb77717171717171117b11bbbb7b117b7177717111b7117171b711717b7b11bbbbb7117b71bbbb7171711171bb7171bbbb71717b717171bbbb
+bbbbb71bb71bbbbb7171777177b177bb777bbbbb777b7171717177bbb71b7771b71b717171bbbbbbb71b7171bbbb777177bb71bb7771bbbb777171717171bbbb
+bbbbb71bb71bbbbb71717171717b711bb171bbbbb17171717171711bb71b7171b71b7171717bbbbbb71b7171bbbb7171711b71bb7111bbbbb17171717171bbbb
+bbbb777bb71bbbbb717171717171777b77b1bbbb77b177b17171777bb71b7171777b71717771bbbbb71b77b1bbbb7171777b777b71bbbbbb777177b1b771bbbb
+bbbbb111bb1bbbbbb1b1b1b1b1b1b111b11bbbbbb11bb11bb1b1b111bb1bb1b1b111b1b1b111bbbbbb1bb11bbbbbb1b1b111b111b1bbbbbbb111b11bbb11bbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbb77b777bbbbb777b777bbbbb777b777b7b7b777bb77bbbbb777b7b7b777b7bbbbbbbb77b777b777b777b777b777bb77bb7bbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbb7b717171bbbbb711b711bbbb77717171717171117b11bbbb71117171b71171bbbbbb7b117171b7117171b711b7117b11b71bbbbbbbbb
+bbbbbbbbbbbbbbbbbbbb717177b1bbbbb71bb71bbbbb7171777177b177bb777bbbbb77bb7171b71b71bbbbbb777b7771b71b77b1b71bb71b777bb71bbbbbbbbb
+bbbbbbbbbbbbbbbbbbbb7171717bbbbbb71bb71bbbbb71717171717b711bb171bbbb711b7771b71b71bbbbbbb1717111b71b717bb71bb71bb171bb1bbbbbbbbb
+bbbbbbbbb7bbb7bbb7bb77b17171bbbb777bb71bbbbb717171717171777b77b1bbbb777bb711777b777bbbbb77b171bb777b7171777bb71b77b1b7bbbbbbbbbb
+bbbbbbbbbb1bbb1bbb1bb11bb1b1bbbbb111bb1bbbbbb1b1b1b1b1b1b111b11bbbbbb111bb1bb111b111bbbbb11bb1bbb111b1b1b111bb1bb11bbb1bbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbb777b777b777bb77b7b7bb77bbbbb7b7b777b7bbb7b7bbbbbbbbb7b7bbbbb777bb77b777b777bb77b77bbbbbbbbbb777bbbbb777b7b7b7b7bbbbbbbbb
+bbbbbbbb7171717171717b7171717b11bbbb7171717171bb7171bbbbbbbb7171bbbb71717b71b711b7117b71717bbbbbbbbbb171bbbb717171717171bbbbbbbb
+bbbbbbbb777177b177b171717171777bbbbb7171777171bb77b1bbbbbbbbb7b1bbbb77717171b71bb71b71717171bbbbbbbbb7b1bbbb77b171717771bbbbbbbb
+bbbbbbbb7171717b717b71717771b171bbbb7771717171bb717bbbbbbbbb7b7bbbbb71117171b71bb71b71717171bbbbbbbb7b1bbbbb717b7171b171bbbbbbbb
+bbbbbbbb71717171717177b1777177b1bbbb77717171777b7171bbbbbbbb7171bbbb71bb77b1b71b777b77b17171bbbbbbbb777bbbbb7771b7717771bbbbbbbb
+bbbbbbbbb1b1b1b1b1b1b11bb111b11bbbbbb111b1b1b111b1b1bbbbbbbbb1b1bbbbb1bbb11bbb1bb111b11bb1b1bbbbbbbbb111bbbbb111bb11b111bbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb777b777b777bb77bb77bbbbb777bbbbb777bb77bbbbbb77b777b777b777b777bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb7171717171117b117b11bbbbb171bbbbb7117b71bbbb7b11b71171717171b711bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb777177b177bb777b777bbbbbb7b1bbbbb71b7171bbbb777bb71b777177b1b71bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb7111717b711bb171b171bbbb7b1bbbbbb71b7171bbbbb171b71b7171717bb71bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb71bb7171777b77b177b1bbbb777bbbbbb71b77b1bbbb77b1b71b71717171b71bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1bbb1b1b111b11bb11bbbbbb111bbbbbb1bb11bbbbbb11bbb1bb1b1b1b1bb1bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+__map__
+414243447840407b474747474747474747474747474747474040404000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+4142434441424344414243444142434441424747474747474040404040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+5152535460606060606060606060474747474747474747474040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+6162636461626364606060606060606060606060606047474040404040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+6060606060606060606060606060606060606060606060404040404040404040404000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+6060606060606060606060606060606060606060606060606040404040404040404040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+404040404040404047474747b8b9474747476060606060606060604040404040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+4040474040404040474747474747474747474747606060606060606060404040404040404000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+4040404040474040474747474747474040404040404060606060606060404040404040404040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+4040474047474047404040404040404040404040404040406060606060424040404040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+404040404040404040cb40c8c9ca404040404040404040404060606060404040404040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+4040404040404040404040404040404040404040404040404040606060604040404040404040404000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+e4e5e6e7e8e9eaebeaebe7404040404040404040404040404040406060604040404040404040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000004040404040404040404040404040406060606040404040404040404040404000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000004040404040404040404040404040404060606040404040404040404040404000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000040404040404040404040404040404060606060404040404040404040404040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000040404040404040404040404040606060404040404040404040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000040404040404040404040606060604040404040404040404040404000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000404040404047484040476060604040404040404040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000004040404040584040576060606040404040404040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000004040404040684040406860606040404040404040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000040404040404040404060606060404040404040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000404040404040404040606060404040404040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000004040404040404040406060604040404040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000000040404040404040406060606040404040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000000040404040404040404060606040404040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000000040404040404040404060606060404040404040404000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000000000404040404040404040606060404040404040404000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000000000404040404040404040606060604040404040404040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000000000004040404040404040406060606040404040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000000000000040404040404040404060606040404040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000000000000040404040404040424060606040404040404040400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+__sfx__
+00040000180501c0501f0502405000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00030000241502b150000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000600000c540105400e540135400c540115400f540155400e5401354011540185400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00060000180501c0501f05024050280502b0503005000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000900001425013250102500f2500c2500b2500825007250000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00040000126500e6500a6500665000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000400001f150241502b1500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000500000a24008240000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00080000180501c0501f050240501f05024050280502b050280502b05030050300500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
