@@ -1,5 +1,5 @@
 .DS_Store
 *.bak
 __pycache__/
-carts/private/
-carts/untitled*.p8
+carts/ettas-sketches-1.p8
+carts/ettas-sketches-2.p8

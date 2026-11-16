@@ -40,10 +40,9 @@ The prompt is the design doc. Real examples:
 
 PICO-8 on the laptop is pointed at this repo: `root_path` in
 `~/Library/Application Support/pico-8/config.txt` is `carts/` here, so the
-kids' saves land in `carts/` directly and show up in `git status`. A new
-drawing arrives as `carts/untitled*.p8` (git-ignored) until it gets a slug.
-`carts/private/` (git-ignored) holds drawing-only carts that stay out of the
-public repo.
+kids' saves land in `carts/` directly and show up in `git status`. New
+carts the kids save (`untitled*.p8`) can be committed as they are. Only
+`ettas-sketches-1.p8` and `ettas-sketches-2.p8` are git-ignored, by name.
 
 - Parse `__gfx__` (128 hex chars per row, one hex digit per pixel) and render
   the sprite sheet to a PNG at 6-8x to look at it; also look at `__map__` if
@@ -132,9 +131,9 @@ The kids will find bugs fast; find them first.
   instead of dashes (`super-animals-2` → `super animals 2.p8`). The arcade
   holds exactly the playable games in `games.json`, with the same titles in
   its game list. Never put a cart without code on the arcade: it crashes
-  with no way out. Drawing-only carts stay in `carts/private/`.
+  with no way out. That is the only rule about where carts go.
 - Restarting EmulationStation without it overwriting the game list: check no
   game is running, write the list, `touch /tmp/es-restart`, then `kill -9`
   the `emulationstation` binary (the wrapper script relaunches it).
-- Public repo: keep the kids' first names out of new carts and copy (Abel is
-  already public), unless Andy says otherwise.
+- Kids' first names in cart names are fine (Andy, 2026-11-15: "abels moving
+  guy", "ettas sketches"); he is not concerned about keeping them off GitHub.
