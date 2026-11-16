@@ -1,3 +1,5 @@
 .DS_Store
 *.bak
 __pycache__/
+carts/private/
+carts/untitled*.p8

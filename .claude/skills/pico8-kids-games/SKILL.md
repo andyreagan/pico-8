@@ -38,8 +38,12 @@ The prompt is the design doc. Real examples:
 
 ## 2. Read the cart before writing anything
 
-Carts live in `~/Library/Application Support/pico-8/carts/` (the kids save
-there) and are copied into `carts/<slug>.p8` here.
+PICO-8 on the laptop is pointed at this repo: `root_path` in
+`~/Library/Application Support/pico-8/config.txt` is `carts/` here, so the
+kids' saves land in `carts/` directly and show up in `git status`. A new
+drawing arrives as `carts/untitled*.p8` (git-ignored) until it gets a slug.
+`carts/private/` (git-ignored) holds drawing-only carts that stay out of the
+public repo.
 
 - Parse `__gfx__` (128 hex chars per row, one hex digit per pixel) and render
   the sprite sheet to a PNG at 6-8x to look at it; also look at `__map__` if
@@ -123,14 +127,12 @@ The kids will find bugs fast; find them first.
 - Standing permission from Andy (2026-11-15): in this repo, commit and push
   without asking after each working change, and always copy the cart to the
   arcade when it is on (`ssh arcade`; if it is off ssh just won't respond,
-  so skip it and say so). Also copy the cart to the laptop's PICO-8 carts
-  folder so it can be tested there.
-- Names: on the laptop and the arcade a cart's file name is the repo slug
-  with spaces instead of dashes (`super-animals-2` → `super animals 2.p8`).
-  The arcade holds exactly the playable games in `games.json`, with the
-  same titles in its game list. Never put a cart without code on the
-  arcade: it crashes with no way out. Drawing-only carts (the sketches)
-  stay on the laptop only, out of the repo.
+  so skip it and say so).
+- Names: on the arcade a cart's file name is the repo slug with spaces
+  instead of dashes (`super-animals-2` → `super animals 2.p8`). The arcade
+  holds exactly the playable games in `games.json`, with the same titles in
+  its game list. Never put a cart without code on the arcade: it crashes
+  with no way out. Drawing-only carts stay in `carts/private/`.
 - Restarting EmulationStation without it overwriting the game list: check no
   game is running, write the list, `touch /tmp/es-restart`, then `kill -9`
   the `emulationstation` binary (the wrapper script relaunches it).
