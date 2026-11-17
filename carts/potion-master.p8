@@ -81,6 +81,7 @@ function new_game()
  boots=false compass=false magnet=false
  spirits={}
  pl={x=20,y=56,face=1,hurt=0,walk=0}
+ for i=1,2 do roamer() end
  new_round()
  state="play"
  say("find 11 ingredients!",90)
@@ -226,22 +227,59 @@ function update_items()
  end
 end
 
+-- a spirit that lives in the
+-- land. it drifts about, and
+-- chases the wizard when he
+-- comes close, until it tires
+function roamer(s)
+ s=s or add(spirits,{roam=true,t=0})
+ repeat
+  s.x=rnd(ww-12) s.y=10+rnd(wh-30)
+ until abs(s.x-pl.x)+abs(s.y-pl.y)>150
+ s.gx=s.x s.gy=s.y
+ s.ch=0 s.tired=60
+end
+
 function update_spirits()
  for i=#spirits,1,-1 do
   local s=spirits[i]
-  s.t-=1
   local dx,dy=pl.x-s.x,pl.y+2-s.y
   local d=sqrt(dx*dx+dy*dy)
-  if d>1 then
-   s.x+=dx/d*s.spd
-   s.y+=dy/d*s.spd
+  local sp=s.spd
+  if s.roam then
+   if s.tired>0 then s.tired-=1 end
+   if d<48 and s.tired<=0 then
+    s.ch+=1
+    sp=min(0.8,0.55+potions*0.05)
+    if s.ch>150 then s.ch=0 s.tired=180 end
+   else
+    s.ch=0
+    -- drift to a spot, then pick
+    -- another one
+    dx,dy=s.gx-s.x,s.gy-s.y
+    d=sqrt(dx*dx+dy*dy)
+    sp=0.35
+    if d<4 then
+     s.gx=mid(0,s.x+rnd(160)-80,ww-12)
+     s.gy=mid(10,s.y+rnd(160)-80,wh-20)
+    end
+   end
+  else
+   s.t-=1
   end
-  if s.t<=0 then
+  if d>1 then
+   s.x+=dx/d*sp
+   s.y+=dy/d*sp
+  end
+  dx,dy=pl.x-s.x,pl.y+2-s.y
+  if not s.roam and s.t<=0 then
    deli(spirits,i)
-  elseif pl.hurt==0 and s.t<570 and d<9 then
+  elseif pl.hurt==0 and (s.roam or s.t<570)
+   and abs(dx)<9 and abs(dy)<9 then
    lives-=1
    pl.hurt=75
    sfx(5)
+   if s.roam then roamer(s) end
    if lives<=0 then
     state="over"
     msgt=0
@@ -261,12 +299,15 @@ function finish_potion()
   return
  end
  state="play"
- if potions>1 and rnd()<0.4 then
+ -- every potion wakes one more
+ -- spirit somewhere in the land
+ roamer()
+ if rnd()<0.5 then
   bad+=1
-  for i=1,min(4,bad+1) do
+  for i=1,min(6,bad+2) do
    local a=rnd()
    add(spirits,{x=pl.x+cos(a)*70,y=pl.y+sin(a)*70,
-    t=600,spd=min(0.8,0.5+potions*0.05)})
+    t=600,spd=min(0.9,0.6+potions*0.06)})
   end
   say("oh no! evil spirits! run!",120)
   sfx(4)
@@ -328,7 +369,7 @@ function _draw()
  end
  for s in all(spirits) do
   -- they fade in and out
-  if (s.t>570 or s.t<60) and s.t%4<2 then
+  if not s.roam and (s.t>570 or s.t<60) and s.t%4<2 then
   else
    sspr(104,0,12,13,s.x,s.y+sin(t()+s.x/50)*1.5,12,13,pl.x<s.x)
   end
