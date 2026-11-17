@@ -49,23 +49,23 @@ level={
  "................................................................................................",
  "............b.................b...........................b.......................b.............",
  "............................................b.........................b.........................",
- "......................b.........................................b.......................b.......",
- ".....................................b..............m.....b.....................................",
+ "......................b.........................................b..........*............b.......",
+ ".....................................b............*.m.....b.....................................",
  ".................###......b......................sssssss................b.......................",
- ".................................................sssssss..........................sssssss.......",
+ ".....*...........................................sssssss......................*...sssssss.......",
  "..............s.................................ssssssss....................................D...",
- "..P.....s..m..s...m.....m....m...............c.sssssssss.......m................c.....m....sss..",
+ "..P.....s..m..s...m.....m....m...............c*sssssssss.......m................c.....m....sss..",
  "####################iiiiiiiiiii#wwsswwssww##################iiiiii#wwsswwssww###################",
  "################################wwwwwwwwww#########################wwwwwwwwww###################",
  "################################################################################################",
  "######oooooooo########ooooooo#################oooooooooo########################ooooooooo#######",
- "######ooooouoo########oooouoo#################ooouooouoo########################ooooouooo#######",
+ "######oo*oouoo########oooouoo#################ooouooouoo########################ooooouooo#######",
  "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
 }
 
 function load_level()
  mw=#level[1]
- tiles={} mons={} flags={}
+ tiles={} mons={} flags={} stars={}
  for r=0,14 do
   tiles[r]={}
   for c=0,mw-1 do
@@ -84,6 +84,9 @@ function load_level()
    elseif ch=="c" then
     add(flags,{x=x,y=y-8})
     ch="."
+   elseif ch=="*" then
+    add(stars,{x=x,y=y,w=8,h=8})
+    ch=r>=gr and "o" or "."
    elseif ch=="D" then
     gem={x=x-2,y=y-1,w=12,h=9}
     ch="."
@@ -212,6 +215,9 @@ end
 
 function lose_life(p)
  p.lives-=1
+ -- getting hurt takes your power
+ -- up away
+ p.pow=false
  sfx(4)
  poof(p.x+p.w/2,p.y+p.h/2,{8,7,10})
  if p.lives<=0 then
@@ -352,6 +358,18 @@ function update_player(p)
    sfx(6) msg="checkpoint!" msgt=40
   end
  end
+ -- power up stars make your power
+ -- stronger until you get hurt.
+ -- they are invisible! and they
+ -- stay there for your buddy
+ for s in all(stars) do
+  if not p.pow and overlap(p,s) then
+   p.pow=true
+   sfx(8)
+   poof(s.x+4,s.y+4,{10,9,7})
+   msg="super "..c.name.."!" msgt=50
+  end
+ end
  if overlap(p,{x=gem.x,y=gem.y-12,w=12,h=21}) then
   state="win" winner=p
   sfx(8)
@@ -454,7 +472,8 @@ end
 function walk(p,c,dir,wet)
  local onice=p.ground and tile_at(p.x+p.w/2,p.y+p.h+1)=="i"
  local spd=c.spd
- if c.name=="cheetah" and btn(5,p.n) then spd=3 end
+ if c.name=="cheetah" and btn(5,p.n) then spd=p.pow and 4 or 3 end
+ if c.name=="eagle" and p.pow then spd=2.2 end
  if onice then
   -- ice slows everyone except
   -- the penguin, who zooms
@@ -462,7 +481,7 @@ function walk(p,c,dir,wet)
  end
  -- the belly slide only works on
  -- ice (it can finish a hop)
- if p.ground and not onice then p.slide=0 end
+ if p.ground and not onice and not p.pow then p.slide=0 end
  if p.slide>0 then
   p.slide-=1
   p.vx=p.face*3
@@ -497,7 +516,7 @@ function walk(p,c,dir,wet)
    -- hold x to flap up, let go to
    -- glide down slowly
    if flap then
-    p.vy=max(p.vy-0.5,-1.8)
+    p.vy=max(p.vy-(p.pow and 0.7 or 0.5),p.pow and -2.8 or -1.8)
    else
     p.vy=min(p.vy,1)
    end
@@ -528,12 +547,15 @@ function powers(p,c)
   p.fire=false
   if btn(5,p.n) and p.fuel>0 then
    p.fire=true
-   p.fuel-=1
+   -- powered up: the fire goes
+   -- twice as far and lasts longer
+   local far=p.pow and 2 or 1
+   p.fuel-=1/far
    if p.fuel%6==0 then sfx(1) end
    local mx=p.face>0 and p.x+p.w or p.x
-   zap({x=p.face>0 and mx or mx-26,y=p.y-3,w=26,h=p.h+6})
-   for i=1,3 do
-    add(parts,{x=mx,y=p.y+3,vx=p.face*(1.5+rnd(2)),vy=rnd(1)-0.5,
+   zap({x=p.face>0 and mx or mx-26*far,y=p.y-3,w=26*far,h=p.h+6})
+   for i=1,3*far do
+    add(parts,{x=mx,y=p.y+3,vx=p.face*(1.5+rnd(2))*far,vy=rnd(1)-0.5,
      c=rnd({8,9,10}),t=6+rnd(8)})
    end
   elseif not btn(5,p.n) then
@@ -541,8 +563,11 @@ function powers(p,c)
   end
  elseif n=="unicorn" then
   if btnp(5,p.n) and p.cool<=0 then
-   add(beams,{x=p.face>0 and p.x+p.w or p.x-12,y=p.y+2,w=12,h=6,
-    vx=4*p.face,vy=btn(2,p.n) and -2.5 or 0})
+   -- powered up: a giant rainbow
+   -- that goes through walls
+   local k=p.pow and 2 or 1
+   add(beams,{x=p.face>0 and p.x+p.w or p.x-12*k,y=p.y+4-2*k,w=12*k,h=6*k,
+    vx=4*p.face,vy=btn(2,p.n) and -2.5 or 0,big=p.pow})
    p.cool=15
    sfx(2)
   end
@@ -555,7 +580,14 @@ function powers(p,c)
   -- it is out
   if p.punch>0 then
    p.punch-=1
-   local a={x=p.face>0 and p.x+p.w or p.x-12,y=p.y,w=12,h=p.h}
+   -- powered up: the punch sends
+   -- out a shock wave
+   local r=p.pow and 28 or 12
+   local a={x=p.face>0 and p.x+p.w or p.x-r,y=p.y,w=r,h=p.h}
+   if p.pow then
+    add(parts,{x=p.face>0 and a.x+12 or a.x+r-12,y=p.y+rnd(p.h),
+     vx=p.face*2,vy=0,c=rnd({7,10}),t=8})
+   end
    zap(a)
    smash(a)
   end
@@ -563,7 +595,7 @@ function powers(p,c)
   dig(p)
  elseif n=="penguin" then
   if btnp(5,p.n) and p.slide<=0 and p.ground
-   and tile_at(p.x+p.w/2,p.y+p.h+1)=="i" then
+   and (p.pow or tile_at(p.x+p.w/2,p.y+p.h+1)=="i") then
    p.slide=30
    sfx(5)
   end
@@ -609,7 +641,7 @@ function dig(p)
   add(parts,{x=p.x+p.w/2+p.face*5,y=p.y+p.h-2,vx=-p.face*rnd(1.5),vy=-1-rnd(1),
    c=rnd({4,4,9}),t=8+rnd(6)})
  end
- if p.digt>=7 then
+ if p.digt>=(p.pow and 2 or 7) then
   p.digt=0
   for d in all(q) do
    if tile(d[1],d[2])=="#" then
@@ -661,8 +693,16 @@ function snail_update(p,dir)
   sfx(5)
   -- in your shell you can't hold
   -- on, so you fall off!
-  if p.shell then p.stick=nil end
+  -- (a powered up snail holds on)
+  if p.shell and not p.pow then p.stick=nil end
  end
+ if p.shell and p.stick then
+  p.vx=0 p.vy=0
+  return true
+ end
+ -- a powered up snail crawls
+ -- twice as fast when stuck
+ local cs=p.pow and 1.2 or 0.6
  if p.shell then
   p.vx=0
   p.vy=min(p.vy+grav,4)
@@ -673,9 +713,9 @@ function snail_update(p,dir)
   local s=p.side
   p.vx=0 p.vy=0
   if btn(2,p.n) then
-   if blocked(p,p.x,p.y-1) then p.stick="ceil" else p.y-=0.6 end
+   if blocked(p,p.x,p.y-1) then p.stick="ceil" else p.y-=cs end
   elseif btn(3,p.n) then
-   if blocked(p,p.x,p.y+1) then p.stick=nil else p.y+=0.6 end
+   if blocked(p,p.x,p.y+1) then p.stick=nil else p.y+=cs end
   end
   if p.stick=="wall" and not blocked(p,p.x+s,p.y) then
    -- climbed past the top: hop on
@@ -689,7 +729,7 @@ function snail_update(p,dir)
   return true
  elseif p.stick=="ceil" then
   p.vy=0
-  p.vx=dir*0.6
+  p.vx=dir*cs
   move(p)
   if p.hitx!=0 then
    p.stick="wall" p.side=p.hitx
@@ -735,7 +775,7 @@ function update_beams()
   local b=beams[i]
   b.x+=b.vx b.y+=b.vy
   zap(b)
-  if blocked(b,b.x,b.y) or b.x<camx-20 or b.x>camx+148 or b.y<-10 then
+  if (not b.big and blocked(b,b.x,b.y)) or b.x<camx-30 or b.x>camx+148 or b.y<-10 then
    deli(beams,i)
   end
  end
@@ -804,8 +844,9 @@ function _draw()
   end
  end
  for b in all(beams) do
+  local k=b.h/6
   for i=0,5 do
-   line(b.x,b.y+i,b.x+b.w-1,b.y+i,rc[i+1])
+   rectfill(b.x,b.y+i*k,b.x+b.w-1,b.y+i*k+k-1,rc[i+1])
   end
  end
  for p in all(ps) do
@@ -892,7 +933,11 @@ function draw_player(p)
   sspr(16,32,16,16,x-8,y-16,16,16,fl)
  elseif n=="snail" then
   if p.shell then
-   sspr(52,32,8,7,x-4,y-7)
+   -- the shell stays where the
+   -- snail was stuck
+   sspr(52,32,8,7,
+    p.stick=="wall" and (p.side>0 and p.x+p.w-8 or p.x) or x-4,
+    p.stick=="ceil" and p.y or y-7,8,7,false,p.stick=="ceil")
   elseif p.stick=="wall" then
    sspr(44,32,8,12,p.side>0 and p.x+p.w-8 or p.x,y-12,8,12,p.side<0)
   elseif p.stick=="ceil" then
@@ -930,6 +975,23 @@ function draw_player(p)
   else
    sspr(48,88,14,19,r and x-9 or x-5,y-19-bob,14,19,r)
   end
+ end
+ -- the fox and the eagle have
+ -- beams from their eyes that
+ -- point at the hidden power ups
+ if (n=="fox" or n=="eagle") and not p.bub then
+  local ex,ey=x+p.face*(n=="fox" and 6 or 2),y-(n=="fox" and 7 or 8)
+  for s in all(stars) do
+   if abs(s.x+4-ex)<90 then
+    line(ex,ey,s.x+4,s.y+4,rnd({10,9,7}))
+    print("\146",s.x,s.y+1,t()%0.4<0.2 and 10 or 9)
+   end
+  end
+ end
+ -- powered up animals sparkle
+ if p.pow and rnd()<0.4 then
+  add(parts,{x=p.x+rnd(p.w),y=top+rnd(p.c.sh),vx=0,vy=-0.4,
+   c=rnd({10,7,9}),t=8})
  end
  -- with two players, a little
  -- arrow shows who is who
