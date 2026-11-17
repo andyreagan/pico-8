@@ -62,6 +62,9 @@ function _init()
   {{n="stony creek tanker",t=1},{n="elm ridge engine",t=1}},
  }
  nth={"1st","2nd","3rd"}
+ -- no auto-repeat on held buttons
+ poke(0x5f5c,255)
+ wt=0
  level=1
  saved={}
  state="title"
@@ -312,7 +315,7 @@ function update_size()
   sfx(6)
  end
  if btnp(5) then call_help() end
- if btnp(4) then start_fight() end
+ if btnp(4) and wt<=0 then start_fight() end
 end
 
 -- strike the next alarm
@@ -586,26 +589,32 @@ end
 
 function _update()
  if msgt>0 then msgt-=1 end
+ -- every new screen ignores z for
+ -- a moment, and a held z doesn't
+ -- count as a new press
+ if state!=lstate then lstate=state wt=20 end
+ if wt>0 then wt-=1 end
+ local go=btnp(4) and wt<=0
  if state=="title" then
-  if btnp(4) then
+  if go then
    level=1 saved={}
    start_call()
   end
  elseif state=="tones" then
   dt+=1
-  if btnp(4) then state="app" sfx(6) end
+  if go then state="app" sfx(6) end
  elseif state=="app" then
   dt+=1
   if btnp(2) then sel=(sel-2)%5+1 sfx(6) end
   if btnp(3) then sel=sel%5+1 sfx(6) end
-  if btnp(4) then start_drive() end
+  if go then start_drive() end
  elseif state=="drive" then update_drive()
  elseif state=="size" then update_size()
  elseif state=="fight" then update_fight()
  elseif state=="fail" then
-  if btnp(4) then start_call() end
+  if go then start_call() end
  elseif state=="won" then
-  if btnp(4) then
+  if go then
    level+=1
    if level>#calls then
     state="done"
@@ -615,7 +624,7 @@ function _update()
    end
   end
  elseif state=="done" then
-  if btnp(4) then state="title" end
+  if go then state="title" end
  end
 end
 
