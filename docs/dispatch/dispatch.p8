@@ -3,7 +3,7 @@ version 42
 __lua__
 -- dispatch
 -- a firefighting penguin in
--- shutesbury, ma. take the call,
+-- ruraltown usa. take the call,
 -- pick an apparatus, drive to the
 -- scene without crashing, size
 -- it up, pick your hose and put
@@ -18,11 +18,11 @@ function _init()
   {n="brush 2",d="150 gal, small + quick",w=150,h=11,pc=9,ls={4,5},off=true},
  }
  lines={
-  {n="cross-lay",flow=.8,dmg=.12,reach=24,hose=56,sp=1,dep=2},
-  {n="bumper line",flow=.8,dmg=.12,reach=24,hose=34,sp=1,dep=0},
-  {n="2.5in off the bed",flow=1.5,dmg=.3,reach=36,hose=90,sp=.5,dep=5,big=true},
-  {n="booster reel",flow=.3,dmg=.08,reach=20,hose=48,sp=1.2,dep=0},
-  {n="forestry line",flow=.35,dmg=.08,reach=20,hose=100,sp=1,dep=3},
+  {n="cross-lay",flow=.8,dmg=.12,reach=30,hose=56,sp=1,dep=2},
+  {n="bumper line",flow=.8,dmg=.12,reach=30,hose=34,sp=1,dep=0},
+  {n="2.5in off the bed",flow=1.5,dmg=.3,reach=44,hose=90,sp=.5,dep=5,big=true},
+  {n="booster reel",flow=.3,dmg=.08,reach=24,hose=48,sp=1.2,dep=0},
+  {n="forestry line",flow=.35,dmg=.08,reach=24,hose=100,sp=1,dep=3},
  }
  calls={
   {t="brush fire",a="wendell rd",d="1/4 acre of grass burning",
@@ -153,7 +153,9 @@ function start_sizeup()
  onscene=true
  row=1
  li=1
- hl=lines[ap.ls[1]]
+ ls={}
+ for q in all(ap.ls) do add(ls,q) end
+ hl=lines[ls[1]]
  pierce=false
  wantvent=false
  vented=false
@@ -284,9 +286,9 @@ function update_size()
  if btnp(2) then row=(row-2)%nr+1 end
  if btnp(3) then row=row%nr+1 end
  if btnp(0) or btnp(1) then
-  if row==1 and #ap.ls>0 then
-   li=(li-1+(btnp(1) and 1 or -1))%#ap.ls+1
-   hl=lines[ap.ls[li]]
+  if row==1 and #ls>0 then
+   li=(li-1+(btnp(1) and 1 or -1))%#ls+1
+   hl=lines[ls[li]]
   elseif row==2 then pierce=not pierce
   else wantvent=not wantvent end
   sfx(6)
@@ -309,13 +311,15 @@ end
 function start_fight()
  state="fight"
  ft=0
- pl={x=trk.x+10,y=trk.y,dx=0,dy=-1,sr=0}
+ pull=0
+ pl={x=trk.x+10,y=trk.y,ax=0,ay=-14,sr=0}
  buddy=nil
  if c.n>=4 then
-  buddy={x=trk.x+18,y=trk.y+4,dx=0,dy=-1,sr=0}
+  buddy={x=trk.x+18,y=trk.y+4,ax=0,ay=-14,sr=0}
  end
  if hl then
   burn(hl.dep)
+  say("hold z: spray. arrows aim it",150)
  else
   say("no hose! x: call for an engine",150)
  end
@@ -347,6 +351,7 @@ function update_fight()
      water+=2000
      if not hl then
       hl=lines[1]
+      ls={1,2,3} li=1
       say(h.n..": hose+2000 gal",120)
      else
       say(h.n..": +2000 gal",120)
@@ -360,22 +365,52 @@ function update_fight()
    end
   end
  end
- if btnp(5) then call_help() end
+ -- at the truck x pulls a
+ -- different hose, anywhere else
+ -- it is the radio
+ if pull>0 then pull-=1 end
+ attrk=#ls>1 and dist(pl.x,pl.y,trk.x,trk.y)<18
+ if btnp(5) then
+  if attrk then
+   li=li%#ls+1
+   hl=lines[ls[li]]
+   pull=hl.dep*20
+   say("you pull the "..hl.n,60)
+   sfx(6)
+  else
+   call_help()
+  end
+ end
  local dx,dy=0,0
  if btn(0) then dx=-1 end
  if btn(1) then dx=1 end
  if btn(2) then dy=-1 end
  if btn(3) then dy=1 end
  local z=btn(4)
+ local p=pl
+ local r=hl and hl.reach or 14
  if dx!=0 or dy!=0 then
   local m=(dx!=0 and dy!=0) and .7 or 1
-  if not z then pl.dx=dx*m pl.dy=dy*m end
-  step(pl,dx*m,dy*m)
+  if z then
+   -- holding the nozzle open:
+   -- the stick moves where the
+   -- water lands
+   p.ax+=dx*m*2 p.ay+=dy*m*2
+  else
+   -- walking: the nozzle swings
+   -- round to where you're going
+   local l=max(12,dist(0,0,p.ax,p.ay))
+   p.ax+=(dx*m*l-p.ax)*.15
+   p.ay+=(dy*m*l-p.ay)*.15
+   step(p,dx*m,dy*m)
+  end
  end
- pl.sr=0
- if z and hl then
+ local l=dist(0,0,p.ax,p.ay)
+ if l>r then p.ax*=r/l p.ay*=r/l end
+ p.sr=0
+ if z and hl and pull<=0 then
   if water>0 then
-   spray(pl)
+   spray(p)
    if ft%6==0 then sfx(2) end
   elseif ft%30==0 then
    say("out of water! x: call for more")
@@ -422,17 +457,23 @@ function step(e,dx,dy)
  e.x=nx e.y=ny
 end
 
+-- water hits everything on the
+-- way and hardest where it lands
 function spray(e)
  water=max(0,water-hl.flow)
- local reach=hl.reach
- e.sr=reach
- for s=4,reach,4 do
-  local i=cell(e.x+e.dx*s,e.y+e.dy*s)
-  if i and fr[i]>0 then
-   douse(i)
-   if hl.big then
-    douse(i-1) douse(i+1) douse(i-16) douse(i+16)
-   end
+ e.sr=1
+ local n=max(1,ceil(dist(0,0,e.ax,e.ay)/4))
+ local last
+ for q=1,n do
+  local i=cell(e.x+e.ax*q/n,e.y+e.ay*q/n)
+  if i and i!=last then douse(i) end
+  last=i
+ end
+ if last then
+  douse(last)
+  if hl.big then
+   douse(last-1) douse(last+1)
+   douse(last-16) douse(last+16)
   end
  end
 end
@@ -455,7 +496,7 @@ end
 
 -- the other penguins on the line
 function ai(e)
- if not hl or water<=0 then e.sr=0 return end
+ if not hl or water<=0 or pull>0 then e.sr=0 return end
  if ft%10==0 or not e.tg or fr[e.tg]<=0 then
   e.tg=nil
   local bd=999
@@ -474,9 +515,10 @@ function ai(e)
  local x,y=(e.tg-1)%16*8+4,flr((e.tg-1)/16)*8+20
  local d=dist(x,y,e.x,e.y)
  if d<1 then return end
- e.dx=(x-e.x)/d e.dy=(y-e.y)/d
  local r=hl.reach
- if d>r-4 then step(e,e.dx,e.dy) end
+ if d>r-4 then step(e,(x-e.x)/d,(y-e.y)/d) end
+ local m=min(1,r/d)
+ e.ax=(x-e.x)*m e.ay=(y-e.y)*m
  if d<=r+2 then spray(e) end
 end
 
@@ -578,7 +620,7 @@ function draw_title()
  end
  rectfill(0,110,127,127,5)
  cp("dispatch",10,7)
- cp("shutesbury fire dept",20,9)
+ cp("ruraltown usa fire dept",20,9)
  sspr(32,0,16,16,20,38,32,32)
  truck(apps[1],88,36,2)
  cp("take the call. pick a truck.",84,7)
@@ -590,7 +632,7 @@ function draw_tones()
  cls(0)
  rectfill(0,0,127,9,8)
  cp("** tones **  call "..level.." of "..#calls,2,7)
- cp("shutesbury fire:",18,6)
+ cp("ruraltown fire:",18,6)
  cp(c.t,30,10)
  cp(c.a,40,7)
  cp(c.d,50,7)
@@ -705,9 +747,15 @@ function draw_scene()
   for e in all({pl,buddy}) do
    if hl then
     line(trk.x,trk.y,e.x,e.y,9)
+    local ex,ey=e.x+e.ax,e.y+e.ay
     if e.sr>0 then
-     line(e.x,e.y,e.x+e.dx*e.sr,e.y+e.dy*e.sr,12)
-     pset(e.x+e.dx*e.sr,e.y+e.dy*e.sr,7)
+     line(e.x,e.y-3,ex,ey,12)
+     line(e.x+1,e.y-3,ex+1,ey,12)
+     circ(ex,ey,1+flr(t()*10)%3,7)
+    elseif e==pl then
+     -- where the water will land
+     pset(ex-2,ey,7) pset(ex+2,ey,7)
+     pset(ex,ey-2,7) pset(ex,ey+2,7)
     end
    end
    peng(e.x,e.y,true)
@@ -731,8 +779,10 @@ function draw_scene()
     break
    end
   end
+  if pull>0 then s="pulling hose..." end
   print(s,1,121,7)
-  print("\151help",104,121,10)
+  s=attrk and "\151swap hose" or "\151help"
+  print(s,128-#s*4-4,121,10)
  end
 end
 
@@ -764,7 +814,7 @@ function draw_done()
   print(calls[i].t,10,22+i*8,6)
   print(saved[i].."% saved",80,22+i*8,10)
  end
- cp("you saved "..flr(a/#saved).."% of shutesbury",94,11)
+ cp("you saved "..flr(a/#saved).."% of ruraltown",94,11)
  sspr(32,0,16,16,56,102)
  cp("z: back to the station",121,6)
 end
@@ -814,11 +864,11 @@ __label__
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000009909090909099909990099099909090999090900000999099909990999000009900999099909990000000000000000000000000
-00000000000000000000000090009090909009009000900090909090909090900000900009009090900000009090900090900900000000000000000000000000
-00000000000000000000000099909990909009009900999099009090990099900000990009009900990000009090990099900900000000000000000000000000
-00000000000000000000000000909090909009009000009090909090909000900000900009009090900000009090900090000900000000000000000000000000
-00000000000000000000000099009090099009009990990099900990909099900000900099909090999000009990999090000900000000000000000000000000
+00000000000000000099909090999099909000999009909090990000009090099099900000999099909990999000009900999099909990000000000000000000
+00000000000000000090909090909090909000090090909090909000009090900090900000900009009090900000009090900090900900000000000000000000
+00000000000000000099009090990099909000090090909090909000009090999099900000990009009900990000009090990099900900000000000000000000
+00000000000000000090909090909090909000090090909990909000009090009090900000900009009090900000009090900090000900000000000000000000
+00000000000000000090900990909090909990090099009990909000000990990090900000900099909090999000009990999090000900000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
