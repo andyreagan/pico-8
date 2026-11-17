@@ -27,25 +27,25 @@ function _init()
  calls={
   {t="brush fire",a="old mill rd",d="1/4 acre of grass burning",
    su="small grass fire by the road",
-   n=3,kind="brush",size=1,dist=500,lim=.6},
+   n=3,kind="brush",size=1,dist=500,al=0,lim=.6},
   {t="car fire",a="route 7",d="engine compartment on fire",
    su="car on the shoulder, hood shut",
-   n=2,kind="car",size=1,dist=650,lim=.3},
+   n=2,kind="car",size=1,dist=650,al=0,lim=.3},
   {t="brush fire",a="sawmill rd",d="2 acres, way off the road",
    su="fire is far back in the field",
-   n=4,kind="brush",far=true,size=3,dist=800,lim=.6},
+   n=4,kind="brush",far=true,size=3,dist=800,al=1,lim=.6},
   {t="kitchen fire",a="maple st",d="smoke from a 2 story house",
    su="smoke showing, fire in 1 room",
-   n=4,kind="house",size=2,dist=900,lim=.5},
+   n=4,kind="house",size=2,dist=900,al=1,lim=.5},
   {t="barn fire",a="hilltop farm rd",d="hay barn, flames showing",
    su="hay is burning, grass is dry",
-   n=5,kind="barn",size=3,dist=1000,lim=.55},
+   n=5,kind="barn",size=3,dist=1000,al=2,lim=.55},
   {t="brush fire",a="loon lake",d="5 acres and a strong wind",
    su="wind is pushing it east",
-   n=5,kind="brush",far=true,wind=true,size=4,dist=1100,lim=.65},
+   n=5,kind="brush",far=true,wind=true,size=4,dist=1100,al=2,lim=.65},
   {t="structure fire",a="birch hill rd",d="house, fire through the roof",
    su="heavy fire, a lot of house left",
-   n=6,kind="house",size=6,dist=1200,lim=.65},
+   n=6,kind="house",size=6,dist=1200,al=3,lim=.65},
  }
  -- fuel: {how long it burns, how
  -- much water to knock it down}
@@ -53,12 +53,15 @@ function _init()
  -- 4 hay/engine (shielded) 5 car
  -- and how easily it spreads}
  tp={{5,.6,.22},{10,2,.2},{20,4,.06},{30,4,.06},{30,3,.1}}
- helpers={
-  {n="pine hollow tanker",t=1},
-  {n="cedar falls ladder",t=2},
-  {n="millbrook tanker",t=1},
-  {n="stony creek tanker",t=1},
+ -- who comes on each alarm
+ -- t=1 tanker/engine: water
+ -- t=2 ladder truck
+ alarms={
+  {{n="pine hollow tanker",t=1}},
+  {{n="cedar falls ladder",t=2},{n="millbrook tanker",t=1}},
+  {{n="stony creek tanker",t=1},{n="elm ridge engine",t=1}},
  }
+ nth={"1st","2nd","3rd"}
  level=1
  saved={}
  state="title"
@@ -75,6 +78,8 @@ function start_call()
  -- quite who will show up
  crew=max(2,c.n+flr(rnd(3))-1)
  state="tones"
+ -- the clock starts with the tones
+ dt=0 spd=0
  onscene=false
  sel=1
  sfx(0)
@@ -90,7 +95,7 @@ end
 function start_drive()
  ap=apps[sel]
  state="drive"
- dw=0 dsp=1.5 dt=0
+ dw=0 dsp=1.5
  tx=rx(0)+9
  obs={}
  local w=160
@@ -105,8 +110,16 @@ function start_drive()
  sfx(1,3)
 end
 
+function clk()
+ local s=flr(dt/30)
+ return flr(s/60)..":"..(s%60<10 and "0" or "")..s%60
+end
+
 function update_drive()
  dt+=1
+ -- the limit is 40. speeding costs
+ -- a point a second
+ if dsp>2.05 then spd+=1 end
  if btn(0) then tx-=1.5 end
  if btn(1) then tx+=1.5 end
  if btn(2) then dsp=min(3,dsp+.05) end
@@ -142,6 +155,7 @@ function update_drive()
 end
 
 function crash(s)
+ why2="now there are 2 incidents"
  sfx(-1,3)
  sfx(5)
  state="fail"
@@ -154,6 +168,7 @@ end
 function start_sizeup()
  state="size"
  onscene=true
+ say("on scene in "..clk(),120)
  row=1
  li=1
  ls={}
@@ -164,8 +179,8 @@ function start_sizeup()
  vented=false
  ladder=false
  help={}
+ alarm=0
  water=ap.w
- msgt=0
  build()
 end
 
@@ -300,14 +315,17 @@ function update_size()
  if btnp(4) then start_fight() end
 end
 
+-- strike the next alarm
 function call_help()
- local h=helpers[#help+1]
- if not h then
-  say("no one else to call")
+ if alarm>=3 then
+  say("3rd alarm is the most there is")
   return
  end
- add(help,{n=h.n,t=h.t,eta=360+#help*150})
- say(h.n.." is coming")
+ alarm+=1
+ for h in all(alarms[alarm]) do
+  add(help,{n=h.n,t=h.t,eta=360+#help*150})
+ end
+ say(nth[alarm].." alarm! help is coming")
  sfx(0)
 end
 
@@ -323,7 +341,7 @@ function start_fight()
   burn(hl.dep)
   say("hold z: spray. arrows aim it",150)
  else
-  say("no hose! x: call for an engine",150)
+  say("no hose! x: strike an alarm",150)
  end
  try_vent()
 end
@@ -444,16 +462,22 @@ function update_fight()
    spray(p)
    if ft%6==0 then sfx(2) end
   elseif ft%30==0 then
-   say("out of water! x: call for more")
+   say("out of water! x: next alarm")
   end
  end
  for e in all(buds) do ai(e) end
  if nfire==0 then
-  add(saved,100-flr(nburnt/total*100))
+  pct=100-flr(nburnt/total*100)
+  -- too many alarms for this call
+  -- costs you
+  over=max(0,alarm-c.al)
+  spen=min(30,flr(spd/30))
+  add(saved,max(0,pct-over*15-spen))
   state="won"
   sfx(3)
  elseif nburnt/total>=c.lim then
   state="fail"
+  why2=nil
   why="the fire got away from you"
   sfx(5)
  end
@@ -568,8 +592,10 @@ function _update()
    start_call()
   end
  elseif state=="tones" then
+  dt+=1
   if btnp(4) then state="app" sfx(6) end
  elseif state=="app" then
+  dt+=1
   if btnp(2) then sel=(sel-2)%5+1 sfx(6) end
   if btnp(3) then sel=sel%5+1 sfx(6) end
   if btnp(4) then start_drive() end
@@ -625,9 +651,20 @@ function _draw()
   if state=="size" then draw_size()
   elseif state=="fail" then draw_fail()
   elseif state=="won" then
-   box("the fire is out!",
-    "you saved "..saved[#saved].."%",
-    "z: next call")
+   rectfill(6,34,121,90,1)
+   rect(6,34,121,90,7)
+   cp("the fire is out!",39,7)
+   cp("you saved "..pct.."%",48,10)
+   local y=57
+   if over>0 then
+    cp("too many alarms -"..over*15,y,8)
+    y+=8
+   end
+   if spen>0 then
+    cp("speeding -"..spen,y,8)
+   end
+   cp("score "..saved[#saved],73,11)
+   cp("z: next call",82,6)
   end
  end
  if msgt>0 and (state=="size" or state=="fight") then
@@ -645,7 +682,7 @@ function box(a,b,d)
 end
 
 function draw_fail()
- box(why,"call "..level.." failed","z: take the call again")
+ box(why,why2 or "call "..level.." failed","z: take the call again")
 end
 
 function draw_title()
@@ -674,6 +711,7 @@ function draw_tones()
  cp(crew.." firefighters responding",68,12)
  for i=1,crew do peng(64-crew*6+i*12-6,86) end
  cp("z: respond",112,7)
+ print(clk(),108,121,8)
 end
 
 function draw_app()
@@ -691,7 +729,8 @@ function draw_app()
   print(a.n,32,y,i==sel and 7 or 6)
   print(a.d,32,y+8,i==sel and 12 or 5)
  end
- cp("up/down pick   z: roll",122,6)
+ print("up/down pick   z: roll",2,122,6)
+ print(clk(),108,122,8)
 end
 
 function draw_drive()
@@ -728,7 +767,11 @@ function draw_drive()
  print("to "..c.a,1,1,7)
  rectfill(70,2,125,5,5)
  rectfill(70,2,70+55*min(1,dw/c.dist),5,11)
- print("\148 faster  \131 slower",24,121,7)
+ local mph=flr(dsp*20)
+ rectfill(0,119,127,127,1)
+ print("\148\131 "..mph.." mph",1,121,mph>40 and 8 or 7)
+ print(mph>40 and "slow down!" or "limit 40",60,121,mph>40 and 8 or 6)
+ print(clk(),108,121,7)
 end
 
 function draw_scene()
@@ -818,7 +861,7 @@ function draw_scene()
   end
   if pull>0 then s="pulling hose..." end
   print(s,1,121,7)
-  s=attrk and "\151swap hose" or "\151help"
+  s=attrk and "\151swap hose" or "\151alarm"
   print(s,128-#s*4-4,121,10)
  end
 end
@@ -836,8 +879,9 @@ function draw_size()
  opt(1,"hose",hl and hl.n or "none!")
  opt(2,"nozzle",pierce and "piercing" or "fog")
  if struct then opt(3,"vent roof",wantvent and "yes" or "no") end
- local s="x: call for help"
- if #help>0 then s="x: more help ("..#help.." coming)" end
+ local s="x: strike the 1st alarm"
+ if alarm>0 then s="x: "..nth[alarm].." alarm struck. more?" end
+ if alarm>=3 then s="3rd alarm struck" end
  print(s,3,111,12)
  print("z: fight the fire!",3,119,11)
 end
@@ -849,9 +893,9 @@ function draw_done()
  for i=1,#saved do
   a+=saved[i]
   print(calls[i].t,10,22+i*8,6)
-  print(saved[i].."% saved",80,22+i*8,10)
+  print("score "..saved[i],84,22+i*8,10)
  end
- cp("you saved "..flr(a/#saved).."% of ruraltown",94,11)
+ cp("ruraltown score: "..flr(a/#saved),94,11)
  sspr(32,0,16,16,56,102)
  cp("z: back to the station",121,6)
 end
